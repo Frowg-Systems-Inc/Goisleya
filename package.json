@@ -1,0 +1,14 @@
+{
+  "name": "isley-overlay-checks",
+  "private": true,
+  "description": "Repo-root tooling for linting and contract-checking the Isley overlay scripts.",
+  "scripts": {
+    "lint:overlay": "eslint --max-warnings 0 \"BurntHud/Map/isley-map-controller.js\" \"BurntHud/Voice/voice.js\" \"BurntHud/Voice/voice-crypto.js\"",
+    "verify:overlay-scripts": "node scripts/verify-overlay-scripts.cjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.0",
+    "eslint": "9.39.0",
+    "globals": "15.15.0"
+  }
+}

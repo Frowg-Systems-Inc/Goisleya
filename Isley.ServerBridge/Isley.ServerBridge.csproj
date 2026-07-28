@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Isley.ServerBridge</AssemblyName>
+    <RootNamespace>Isley.ServerBridge</RootNamespace>
+    <Version>1.3.0</Version>
+    <Description>Operator-authorized The Isle RCON and plugin telemetry bridge for Isley.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Isley.Telemetry\Isley.Telemetry.csproj" />
+  </ItemGroup>
+
+</Project>

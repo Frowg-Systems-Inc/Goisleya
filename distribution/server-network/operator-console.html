@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Isley Live Network · Operator Console</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Segoe UI", sans-serif; }
+    body { margin: 0; padding: 24px; background: #071018; color: #e2e8f0; }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; }
+    p, li { color: #94a3b8; font-size: 0.9rem; line-height: 1.45; }
+    .card { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin: 12px 0; }
+    code { color: #7dd3fc; }
+    button { background: #0ea5e9; color: #041016; border: 0; border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #020617; padding: 12px; border-radius: 8px; font-size: 0.8rem; }
+    .warn { color: #fbbf24; }
+  </style>
+</head>
+<body>
+  <h1>Isley Live Network · Operator Console</h1>
+  <p>Local helper page. Open from the extracted server kit. It only reads loopback Bridge status and never asks for secrets.</p>
+  <div class="card">
+    <p><strong>Bridge status</strong> · <code id="bridgeUrl">http://127.0.0.1:5210/status</code>
+      · <a href="http://127.0.0.1:5210/status/ui" style="color:#7dd3fc">HTML view</a></p>
+    <button type="button" id="refresh">Refresh status</button>
+    <pre id="status">Waiting…</pre>
+    <p id="coach" class="warn"></p>
+  </div>
+  <div class="card">
+    <p><strong>If facing / sickness / AI are missing</strong></p>
+    <ul>
+      <li>RCON cannot invent stationary facing, conditions, or AI animals.</li>
+      <li>Enable an authorized plugin — see <code>RCON_TO_PLUGIN.md</code>.</li>
+      <li>Dry-run: <code>.\publish-plugin-frame.ps1 -DryRun</code></li>
+    </ul>
+  </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    const coachEl = document.getElementById('coach');
+    const refresh = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:5210/status', { cache: 'no-store' });
+        const text = await response.text();
+        statusEl.textContent = text;
+        const lower = text.toLowerCase();
+        const sourceMatch = lower.match(/"source"\s*:\s*"([^"]+)"/);
+        const relayMatch = lower.match(/"relay"\s*:\s*"([^"]+)"/);
+        const source = sourceMatch?.[1] ?? '';
+        const relay = relayMatch?.[1] ?? '';
+        coachEl.textContent = source === 'error' || relay === 'error'
+          ? 'Bridge reports an error — check Relay URL/secret and RCON/plugin source.'
+          : source === 'live'
+            ? 'Source live. If players still miss FACING/COND/AI, upgrade from RCON to a plugin.'
+            : 'Source not live yet — start Bridge after Relay and confirm RCON or plugin mode.';
+      } catch (error) {
+        statusEl.textContent = String(error);
+        coachEl.textContent = 'Cannot reach Bridge on 127.0.0.1:5210. Start Isley.ServerBridge locally.';
+      }
+    };
+    document.getElementById('refresh').addEventListener('click', refresh);
+    refresh();
+  </script>
+</body>
+</html>

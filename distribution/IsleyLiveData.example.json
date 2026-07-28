@@ -1,0 +1,33 @@
+{
+  "updatedAt": "2026-07-23T22:00:00Z",
+  "self": {
+    "id": "self",
+    "label": "You",
+    "x": 12500,
+    "y": -8400,
+    "z": 310,
+    "yaw": 45,
+    "self": true
+  },
+  "players": [
+    {
+      "id": "friend-example",
+      "label": "Packmate",
+      "x": 12850,
+      "y": -8120,
+      "z": 305,
+      "yaw": 38,
+      "friend": true
+    }
+  ],
+  "vitals": {
+    "speciesId": "triceratops",
+    "growthPercent": 82,
+    "healthCurrent": 94,
+    "healthMaximum": 100,
+    "foodCurrent": 71,
+    "foodMaximum": 100,
+    "waterCurrent": 66,
+    "waterMaximum": 100
+  }
+}

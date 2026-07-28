@@ -1,0 +1,1766 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Isley Gateway Terrain</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #071116;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body,
+    #map {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #071116;
+    }
+
+    #map {
+      position: relative;
+      touch-action: none;
+      user-select: none;
+      cursor: grab;
+      isolation: isolate;
+    }
+
+    #map:active { cursor: grabbing; }
+
+    #layer {
+      width: 100%;
+      height: 100%;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: #071116;
+      text-rendering: geometricPrecision;
+    }
+
+    .ocean-contour {
+      fill: none;
+      stroke: #4b7781;
+      stroke-width: 1;
+      opacity: .12;
+    }
+
+    .coast-shadow {
+      fill: none;
+      stroke: #020708;
+      stroke-width: 28;
+      opacity: .42;
+    }
+
+    .coast-beach {
+      fill: none;
+      stroke: #b9ad7e;
+      stroke-width: 15;
+      opacity: .9;
+    }
+
+    .coast-edge {
+      fill: none;
+      stroke: #d9d0a8;
+      stroke-width: 2.4;
+      opacity: .82;
+    }
+
+    .biome-forest { fill: #163c2a; opacity: .76; }
+    .biome-jungle { fill: #0d3528; opacity: .82; }
+    .biome-plains { fill: #657044; opacity: .62; }
+    .biome-dry { fill: #7a6f47; opacity: .5; }
+    .biome-wetland { fill: #244f46; opacity: .82; }
+    .biome-highland { fill: #4a5548; opacity: .82; }
+
+    .canopy {
+      fill: url(#canopyPattern);
+      opacity: .55;
+    }
+
+    .grass-texture {
+      fill: url(#grassPattern);
+      opacity: .36;
+    }
+
+    .wetland-texture {
+      fill: url(#wetlandPattern);
+      opacity: .56;
+    }
+
+    .contour {
+      fill: none;
+      stroke: #c3c6a2;
+      stroke-width: 1.1;
+      opacity: .16;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .contour-major {
+      stroke: #d6d7b4;
+      stroke-width: 1.7;
+      opacity: .2;
+    }
+
+    .ridge-shadow {
+      fill: #18231f;
+      stroke: #111a18;
+      stroke-width: 7;
+      opacity: .52;
+    }
+
+    .ridge-face {
+      fill: #657067;
+      stroke: #899187;
+      stroke-width: 2.2;
+      opacity: .58;
+    }
+
+    .cliff {
+      fill: none;
+      stroke: #b9beb0;
+      stroke-width: 5;
+      stroke-linecap: round;
+      opacity: .68;
+    }
+
+    .cliff-hatch {
+      fill: none;
+      stroke: #0a1110;
+      stroke-width: 2.2;
+      stroke-dasharray: 3 7;
+      opacity: .72;
+    }
+
+    .isley-water {
+      fill: #174e5a;
+      stroke: #67a5aa;
+      stroke-width: 2.2;
+      opacity: .98;
+    }
+
+    .river-bed {
+      fill: none;
+      stroke: #091a1c;
+      stroke-width: 13;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: .46;
+    }
+
+    .river {
+      fill: none;
+      stroke: #2b7680;
+      stroke-width: 7.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: .98;
+    }
+
+    .river-highlight {
+      fill: none;
+      stroke: #88bfc0;
+      stroke-width: 1.35;
+      stroke-linecap: round;
+      opacity: .62;
+    }
+
+    .isley-road-casing {
+      fill: none;
+      stroke: #211d16;
+      stroke-width: 7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: .55;
+    }
+
+    .isley-road {
+      fill: none;
+      stroke: #c19b67;
+      stroke-width: 3.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: .82;
+    }
+
+    .isley-trail {
+      fill: none;
+      stroke: #d0c08a;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-dasharray: 7 6;
+      opacity: .72;
+    }
+
+    .rail {
+      fill: none;
+      stroke: #abb0a2;
+      stroke-width: 2.2;
+      stroke-dasharray: 2 5;
+      opacity: .68;
+    }
+
+    .structure {
+      fill: #777c72;
+      stroke: #d6d8cb;
+      stroke-width: 1.8;
+      opacity: .94;
+    }
+
+    .structure-dark {
+      fill: #252c29;
+      stroke: #9ea89f;
+      stroke-width: 1.4;
+      opacity: .96;
+    }
+
+    .poi-dot {
+      fill: #d8f4f5;
+      stroke: #092128;
+      stroke-width: 3;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .poi-ring {
+      fill: #102e33;
+      stroke: #77d4db;
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .isley-label {
+      fill: #edf5e9;
+      stroke: #07110f;
+      stroke-width: 5px;
+      paint-order: stroke;
+      font: 750 17px/1 "Segoe UI", sans-serif;
+      letter-spacing: .075em;
+      text-anchor: middle;
+      pointer-events: none;
+      transition: opacity 140ms ease-out;
+    }
+
+    .label-major { font-size: 17px; }
+    .label-minor {
+      fill: #c7d4c8;
+      font-size: 13px;
+      letter-spacing: .055em;
+    }
+    .label-detail {
+      fill: #b6c9c0;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: .045em;
+    }
+
+    .water-label {
+      fill: #9ed9df;
+      font-style: italic;
+      letter-spacing: .085em;
+    }
+
+    .current-map-label {
+      font-size: 12px;
+      letter-spacing: .025em;
+    }
+
+    .current-map-label.structure-label {
+      fill: #ffe29a;
+    }
+
+    /* Marker interpolation: player groups glide between provider frames. */
+    #providerPlayers g[data-isley-player],
+    #layer-heatmap circle[data-isley-live-heat] {
+      transition: transform 900ms linear;
+    }
+    .isley-player-label {
+      font-size: calc(20px * var(--isley-inverse-map-scale, 1));
+      stroke-width: calc(3px * var(--isley-inverse-map-scale, 1));
+    }
+
+    #map[data-map-source-status="online"] #structures,
+    #map[data-map-source-status="online"] #roads {
+      opacity: 0;
+    }
+
+    #map[data-current-labels-status="ready"] #layer-locations {
+      opacity: 0;
+    }
+
+    #map[data-zoom-band="overview"] .label-minor,
+    #map[data-zoom-band="overview"] .label-detail,
+    #map[data-zoom-band="overview"] .current-map-label {
+      opacity: 0;
+    }
+
+    #map[data-zoom-band="local"] .current-map-label {
+      opacity: 0;
+    }
+
+    #map[data-zoom-band="overview"] .zone-label-sanctuary,
+    #map[data-zoom-band="overview"] .zone-label-migration,
+    #map[data-zoom-band="overview"] .zone-label-patrol,
+    #map[data-zoom-band="local"] .zone-label-sanctuary,
+    #map[data-zoom-band="local"] .zone-label-migration,
+    #map[data-zoom-band="local"] .zone-label-patrol {
+      opacity: 1;
+    }
+
+    #map[data-zoom-band="regional"] .label-detail {
+      opacity: 0;
+    }
+
+    .isley-zone {
+      fill: rgba(45, 212, 191, 0.16);
+      stroke: rgba(126, 230, 217, 0.92);
+      stroke-width: 2.15;
+      stroke-linejoin: round;
+      stroke-dasharray: none;
+      vector-effect: non-scaling-stroke;
+      filter: drop-shadow(0 0 3px rgba(45, 212, 191, 0.28));
+    }
+
+    .isley-zone-sanctuary {
+      fill: rgba(52, 211, 153, 0.2);
+      stroke: rgba(110, 231, 183, 0.96);
+      stroke-width: 2.4;
+      stroke-dasharray: none;
+      filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.38));
+    }
+
+    .isley-zone-migration {
+      fill: rgba(245, 158, 11, 0.18);
+      stroke: rgba(251, 191, 36, 0.98);
+      stroke-width: 2.6;
+      stroke-dasharray: none;
+      filter: drop-shadow(0 0 3px rgba(245, 158, 11, 0.32));
+    }
+
+    .isley-zone-patrol {
+      fill: rgba(248, 113, 113, 0.16);
+      stroke: rgba(251, 113, 133, 0.98);
+      stroke-width: 2.6;
+      stroke-dasharray: none;
+      filter: drop-shadow(0 0 3px rgba(248, 113, 113, 0.28));
+    }
+
+    .gateway-resource {
+      stroke: rgba(2, 8, 12, .88);
+      stroke-width: 1.35;
+      vector-effect: non-scaling-stroke;
+      filter: drop-shadow(0 0 2.2px rgba(0, 0, 0, .42));
+    }
+
+    /* Distinct from live player markers (rose/amber) so sites ≠ animals on the map. */
+    .gateway-resource[data-bucket="animals"] { fill: #c084fc; }
+    .gateway-resource[data-bucket="herbs"] { fill: #5ee38b; }
+    .gateway-resource[data-bucket="earth"] { fill: #94a3b8; }
+
+    .zone-label-sanctuary { fill: #b7f0d4; }
+    .zone-label-migration { fill: #fcd34d; }
+    .zone-label-patrol { fill: #fda4af; }
+
+    #currentGatewayTiles image {
+      image-rendering: auto;
+    }
+
+    #currentGatewayBaseMap,
+    #currentGatewayTiles image {
+      filter: saturate(.82) contrast(1.08) brightness(1.07);
+    }
+
+    #terrainReadabilityWash {
+      fill: #d9eee7;
+      opacity: .045;
+      mix-blend-mode: soft-light;
+      pointer-events: none;
+    }
+
+    #map[data-map-source-status="online"] #offlineFallback {
+      opacity: 0;
+    }
+
+    #map[data-map-source-status="offline"] #currentGatewayBaseMap,
+    #map[data-map-source-status="offline"] #currentGatewayTiles {
+      opacity: 0;
+    }
+
+    #mapHud {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      pointer-events: none;
+      color: #d8e8e6;
+    }
+
+    #northArrow {
+      position: absolute;
+      top: 13px;
+      right: 13px;
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 42px;
+      border: 1px solid rgba(184, 226, 226, .28);
+      border-radius: 10px;
+      background: rgba(4, 14, 17, .72);
+      box-shadow: 0 7px 22px rgba(0, 0, 0, .28);
+      font-size: 9px;
+      font-weight: 850;
+      letter-spacing: .12em;
+    }
+
+    #northArrow::after {
+      content: "";
+      width: 0;
+      height: 0;
+      margin-top: -3px;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 13px solid #73d7e4;
+      filter: drop-shadow(0 0 5px rgba(56, 189, 248, .45));
+    }
+
+    #mapStatus {
+      position: absolute;
+      left: 13px;
+      bottom: 13px;
+      max-width: min(440px, calc(100vw - 26px));
+      padding: 7px 10px;
+      overflow: hidden;
+      border: 1px solid rgba(103, 203, 209, .28);
+      border-radius: 9px;
+      color: #cde8e8;
+      background: rgba(4, 14, 17, .82);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, .32);
+      font-size: 9px;
+      font-weight: 780;
+      letter-spacing: .035em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #mapEdition {
+      position: absolute;
+      top: 13px;
+      left: 13px;
+      padding: 6px 9px;
+      border: 1px solid rgba(224, 238, 229, .2);
+      border-radius: 8px;
+      color: #dce9dc;
+      background: rgba(4, 14, 17, .7);
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .1em;
+    }
+
+    #mapKey {
+      position: absolute;
+      top: 50px;
+      left: 13px;
+      display: grid;
+      grid-template-columns: repeat(2, max-content);
+      gap: 5px 12px;
+      max-height: min(52vh, 360px);
+      padding: 8px 10px;
+      overflow-x: hidden;
+      overflow-y: auto;
+      border: 1px solid rgba(184, 226, 226, .23);
+      border-radius: 9px;
+      color: #e8f4f2;
+      background: rgba(4, 14, 17, .78);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .26);
+      font-size: 8px;
+      font-weight: 720;
+      letter-spacing: .025em;
+      line-height: 1;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(126, 230, 217, .35) transparent;
+    }
+
+    .map-key-title {
+      grid-column: 1 / -1;
+      margin-bottom: 1px;
+      color: #9fb6ba;
+      font-size: 7px;
+      font-weight: 850;
+      letter-spacing: .12em;
+    }
+
+    .map-key-title.map-key-section {
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px solid rgba(184, 226, 226, .14);
+      color: #8aa3a7;
+    }
+
+    .map-key-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .map-key-mark {
+      position: relative;
+      display: inline-block;
+      flex: 0 0 auto;
+      width: 9px;
+      height: 9px;
+      border: 1.5px solid #f8fafc;
+      border-radius: 50%;
+      background: #f8fafc;
+    }
+
+    .map-key-mark.you {
+      border: 2px solid #38bdf8;
+      box-shadow: 0 0 5px rgba(56, 189, 248, .7);
+    }
+
+    .map-key-mark.you::after {
+      content: "";
+      position: absolute;
+      top: 1px;
+      left: 6px;
+      width: 8px;
+      height: 4px;
+      clip-path: polygon(0 0, 100% 50%, 0 100%);
+      background: #2563eb;
+    }
+
+    .map-key-mark.friend { background: #34d399; }
+    .map-key-mark.animal { background: #fbbf24; }
+
+    .map-key-line {
+      display: inline-block;
+      flex: 0 0 auto;
+      width: 16px;
+      height: 0;
+      border-top: 2px solid #22d3ee;
+      box-shadow: 0 0 3px rgba(34, 211, 238, .55);
+    }
+
+    .map-key-line.trail {
+      border-top-color: #d7cb95;
+      border-top-style: dashed;
+      box-shadow: none;
+    }
+
+    .map-key-water {
+      display: inline-block;
+      flex: 0 0 auto;
+      width: 15px;
+      height: 7px;
+      border: 1px solid #8dd7df;
+      border-radius: 5px 2px 5px 2px;
+      background: #2b7680;
+    }
+
+    .map-key-zone {
+      display: inline-block;
+      flex: 0 0 auto;
+      width: 14px;
+      height: 9px;
+      border: 1.5px solid;
+      border-radius: 2px;
+    }
+
+    .map-key-zone.sanctuary {
+      border-color: #6ee7b7;
+      background: rgba(52, 211, 153, 0.38);
+      box-shadow: 0 0 4px rgba(52, 211, 153, 0.35);
+    }
+
+    .map-key-zone.migration {
+      border-color: #fbbf24;
+      border-style: solid;
+      background: rgba(245, 158, 11, 0.32);
+    }
+
+    .map-key-zone.patrol {
+      border-color: #fb7185;
+      border-style: solid;
+      background: rgba(248, 113, 113, 0.3);
+    }
+
+    .map-key-resource {
+      display: inline-block;
+      flex: 0 0 auto;
+      width: 8px;
+      height: 8px;
+      border: 1.2px solid rgba(2, 8, 12, .85);
+      border-radius: 50%;
+      box-shadow: 0 0 3px rgba(0, 0, 0, .35);
+    }
+
+    .map-key-resource.animals { background: #c084fc; }
+    .map-key-resource.herbs { background: #5ee38b; }
+    .map-key-resource.earth { background: #94a3b8; }
+
+    #mapSourceLink {
+      position: absolute;
+      right: 13px;
+      bottom: 13px;
+      z-index: 45;
+      max-width: min(360px, calc(100vw - 26px));
+      padding: 5px 8px;
+      overflow: hidden;
+      border: 1px solid rgba(224, 238, 229, .16);
+      border-radius: 7px;
+      color: #dce9dc;
+      background: rgba(4, 14, 17, .72);
+      font-size: 7px;
+      font-weight: 760;
+      letter-spacing: .055em;
+      text-decoration: none;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #map[data-map-source-status="offline"] #mapSourceLink {
+      color: #ffd59a;
+    }
+
+    #providerControls {
+      position: fixed;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    @media (max-width: 470px) {
+      #mapEdition { display: none; }
+      #northArrow { top: 9px; right: 9px; }
+      #mapKey {
+        top: 9px;
+        left: 9px;
+        gap: 4px 9px;
+        padding: 7px 8px;
+      }
+      #mapStatus { left: 9px; right: 9px; bottom: 9px; max-width: none; }
+      #mapSourceLink { display: none; }
+    }
+
+    @media (max-width: 680px) {
+      #mapSourceLink { display: none; }
+    }
+
+    @media (max-width: 330px), (max-height: 330px) {
+      #mapKey {
+        grid-template-columns: repeat(3, max-content);
+        max-width: calc(100vw - 58px);
+        max-height: min(38vh, 220px);
+      }
+      .map-key-title { display: none; }
+      .map-key-item.map-key-extra { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .isley-label { transition: none; }
+      #providerPlayers g[data-isley-player],
+      #layer-heatmap circle[data-isley-live-heat] {
+        transition: none;
+      }
+      .isley-zone,
+      .gateway-resource {
+        filter: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"
+       class="touch-none"
+       data-zoom-band="overview"
+       data-map-source-status="loading"
+       data-current-labels-status="loading"
+       aria-label="Isley current Gateway game-file map with a schematic offline fallback">
+    <div id="layer">
+      <svg viewBox="0 0 1000 1000"
+           role="img"
+           aria-labelledby="mapTitle mapDescription">
+        <title id="mapTitle">Gateway terrain and navigation map</title>
+        <desc id="mapDescription">
+          The current Gateway game-file map and validated navigation layers, with
+          Isley's schematic topographic interpretation retained only as an automatic
+          offline fallback.
+        </desc>
+        <defs>
+          <linearGradient id="ocean" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#102a30"/>
+            <stop offset=".48" stop-color="#0a2026"/>
+            <stop offset="1" stop-color="#07161c"/>
+          </linearGradient>
+          <radialGradient id="islandGround" cx=".53" cy=".46" r=".62">
+            <stop offset="0" stop-color="#36523a"/>
+            <stop offset=".56" stop-color="#29462f"/>
+            <stop offset="1" stop-color="#1a3226"/>
+          </radialGradient>
+          <linearGradient id="reliefWash" x1=".25" y1=".1" x2=".75" y2=".9">
+            <stop offset="0" stop-color="#b9c49a" stop-opacity=".23"/>
+            <stop offset=".42" stop-color="#101a15" stop-opacity=".05"/>
+            <stop offset="1" stop-color="#07110e" stop-opacity=".4"/>
+          </linearGradient>
+          <pattern id="canopyPattern" width="18" height="18" patternUnits="userSpaceOnUse">
+            <circle cx="4" cy="5" r="3.4" fill="#0b2c20"/>
+            <circle cx="12" cy="4" r="4.2" fill="#1f4c30"/>
+            <circle cx="8" cy="13" r="4.5" fill="#133d28"/>
+            <circle cx="17" cy="13" r="3.2" fill="#28593a"/>
+          </pattern>
+          <pattern id="grassPattern" width="14" height="14" patternUnits="userSpaceOnUse">
+            <path d="M2 12L5 8M8 14L10 9M12 7L14 4" stroke="#bec48e" stroke-width=".8" opacity=".38"/>
+          </pattern>
+          <pattern id="wetlandPattern" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M0 5C5 1 12 9 20 4M0 14C7 10 12 18 20 12" fill="none" stroke="#67a7a0" stroke-width="1" opacity=".45"/>
+          </pattern>
+          <pattern id="facilityGrid" width="9" height="9" patternUnits="userSpaceOnUse">
+            <path d="M9 0H0V9" fill="none" stroke="#c9d0ca" stroke-width=".7" opacity=".38"/>
+          </pattern>
+          <filter id="markerShadow" x="-100%" y="-100%" width="300%" height="300%">
+            <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#38bdf8" flood-opacity=".8"/>
+          </filter>
+          <path id="gatewayMainland"
+                d="M812 47
+                   C836 61 844 90 840 118
+                   C840 148 866 166 871 194
+                   C878 218 911 229 920 255
+                   C932 280 917 301 944 326
+                   C952 348 931 369 921 390
+                   C943 416 938 443 915 463
+                   C931 485 918 512 892 529
+                   C915 553 903 578 870 584
+                   C844 595 847 622 820 638
+                   C795 651 774 649 749 663
+                   C766 691 744 714 717 733
+                   C691 755 690 786 662 807
+                   C642 832 629 863 593 877
+                   C568 901 550 929 516 928
+                   C483 917 462 889 430 898
+                   C398 908 376 929 344 918
+                   C316 906 289 917 259 900
+                   C228 888 198 893 168 875
+                   C136 855 106 831 91 800
+                   C72 767 77 735 90 700
+                   C104 668 79 640 96 610
+                   C108 584 137 580 143 555
+                   C124 538 91 532 79 509
+                   C87 481 104 448 123 424
+                   C146 400 177 381 205 368
+                   C225 343 252 330 279 312
+                   C304 292 327 286 351 263
+                   C374 242 404 241 428 219
+                   C451 195 475 184 505 174
+                   C530 153 558 135 590 127
+                   C620 110 649 116 678 109
+                   C708 101 736 94 763 81
+                   C785 72 793 56 812 47Z"/>
+          <clipPath id="islandClip">
+            <use href="#gatewayMainland"/>
+          </clipPath>
+        </defs>
+
+        <g id="offlineFallback" aria-label="Schematic offline terrain fallback">
+        <rect width="1000" height="1000" fill="url(#ocean)"/>
+        <g aria-hidden="true">
+          <path class="ocean-contour" d="M32 417C96 320 183 254 285 196C409 124 546 67 694 46C811 29 923 91 978 196"/>
+          <path class="ocean-contour" d="M13 526C85 424 181 343 291 275C418 196 551 138 703 116C822 99 936 154 992 248"/>
+          <path class="ocean-contour" d="M19 648C104 542 205 464 322 397C452 321 581 273 723 250C839 230 944 275 992 352"/>
+          <path class="ocean-contour" d="M48 813C166 761 277 745 389 750C532 757 671 739 787 679C886 628 952 550 990 461"/>
+          <path class="ocean-contour" d="M135 956C264 913 390 900 511 907C638 914 760 876 846 799C914 738 959 665 986 588"/>
+        </g>
+
+        <use href="#gatewayMainland" class="coast-shadow"/>
+        <use href="#gatewayMainland" class="coast-beach"/>
+        <use href="#gatewayMainland" fill="url(#islandGround)" stroke="#0c1d17" stroke-width="5"/>
+
+        <g id="outer-islands" aria-label="Coastal islands">
+          <path class="coast-beach" d="M679 76C688 62 707 62 716 75C719 90 708 99 693 96C682 93 675 87 679 76Z"/>
+          <path fill="#27452e" stroke="#d3c99d" stroke-width="4" d="M679 76C688 62 707 62 716 75C719 90 708 99 693 96C682 93 675 87 679 76Z"/>
+          <path fill="#294a31" stroke="#d3c99d" stroke-width="4" d="M731 67L746 63L753 76L741 86L727 79Z"/>
+          <path fill="#284b32" stroke="#d3c99d" stroke-width="4" d="M950 347C967 338 979 350 974 366C964 376 948 370 943 359Z"/>
+          <path fill="#304d33" stroke="#d3c99d" stroke-width="5" d="M924 603C949 594 969 611 965 632C946 642 925 636 912 620Z"/>
+          <path fill="#2d5036" stroke="#d3c99d" stroke-width="5" d="M851 699C873 685 899 697 900 719C884 733 860 734 842 718Z"/>
+          <path fill="#315137" stroke="#d3c99d" stroke-width="5" d="M785 747C804 738 821 749 817 765C802 777 781 772 774 759Z"/>
+          <path fill="#314d33" stroke="#d3c99d" stroke-width="4" d="M887 777C899 768 915 775 914 788C904 797 889 795 881 786Z"/>
+          <path fill="#2b4930" stroke="#d3c99d" stroke-width="4" d="M59 525C71 515 84 522 83 537C73 546 59 542 53 534Z"/>
+        </g>
+
+        <g clip-path="url(#islandClip)" aria-label="Terrain">
+          <rect x="62" y="45" width="900" height="900" fill="url(#reliefWash)"/>
+
+          <path class="biome-jungle" d="M410 143C533 104 690 116 799 170C854 205 882 273 866 335C821 362 773 359 728 344C680 326 635 345 582 339C502 329 438 275 410 143Z"/>
+          <path class="biome-forest" d="M132 389C210 311 317 267 417 287C455 351 433 415 381 461C315 511 209 514 121 475Z"/>
+          <path class="biome-jungle" d="M461 332C557 301 676 320 755 372C797 427 777 492 735 535C676 563 604 542 553 504C494 463 456 416 461 332Z"/>
+          <path class="biome-plains" d="M641 169C713 150 800 166 851 215C848 276 809 314 746 321C690 312 652 268 641 169Z"/>
+          <path class="biome-plains" d="M551 365C629 344 720 367 758 427C727 484 662 503 596 486C549 461 526 420 551 365Z"/>
+          <path class="biome-plains" d="M167 574C258 540 364 562 424 632C418 711 357 765 270 774C194 746 160 677 167 574Z"/>
+          <path class="biome-dry" d="M82 723C158 683 249 698 301 758C289 831 227 883 158 875C101 848 75 794 82 723Z"/>
+          <path class="biome-highland" d="M223 238C309 207 408 228 466 295C478 360 432 423 367 445C301 438 251 397 222 337Z"/>
+          <path class="biome-highland" d="M496 185C590 157 698 185 745 264C721 341 648 378 571 359C514 327 485 268 496 185Z"/>
+          <path class="biome-highland" d="M314 421C397 383 481 405 518 474C502 534 451 573 389 566C333 537 305 488 314 421Z"/>
+          <path class="biome-wetland" d="M529 503C629 480 745 522 789 603C765 681 686 733 608 720C545 674 518 602 529 503Z"/>
+          <path class="biome-wetland" d="M243 751C337 713 467 744 567 813C546 887 462 923 363 912C290 890 244 834 243 751Z"/>
+          <path class="biome-wetland" d="M781 374C852 357 918 391 930 446C916 498 874 534 816 522C777 490 761 436 781 374Z"/>
+
+          <path class="canopy" d="M118 368C237 264 381 237 488 291C470 371 427 432 348 471C260 511 162 491 102 451Z"/>
+          <path class="canopy" d="M420 129C573 88 755 111 857 193C888 281 842 354 756 370C672 347 588 363 514 330C457 290 421 222 420 129Z"/>
+          <path class="canopy" d="M440 325C580 286 741 324 813 414C811 493 744 555 663 563C560 542 472 477 440 325Z"/>
+          <path class="canopy" d="M334 550C474 491 610 521 680 623C649 716 549 762 450 735C373 700 327 636 334 550Z"/>
+          <path class="canopy" d="M500 688C619 650 726 699 759 781C707 856 615 889 530 850C486 807 472 753 500 688Z"/>
+
+          <path class="grass-texture" d="M640 153C734 130 835 173 870 242C849 307 788 339 719 323C666 294 631 236 640 153Z"/>
+          <path class="grass-texture" d="M540 355C637 329 743 369 777 433C740 491 669 512 598 486C551 456 527 405 540 355Z"/>
+          <path class="grass-texture" d="M150 559C270 520 397 568 444 661C405 745 320 782 234 755C172 713 140 642 150 559Z"/>
+          <path class="grass-texture" d="M79 709C182 676 281 719 313 788C276 854 205 886 138 864C92 826 70 770 79 709Z"/>
+
+          <path class="wetland-texture" d="M520 493C654 459 792 522 821 625C779 726 673 759 587 706C533 653 507 582 520 493Z"/>
+          <path class="wetland-texture" d="M206 721C346 690 503 747 583 840C526 922 400 939 299 899C233 854 202 794 206 721Z"/>
+          <path class="wetland-texture" d="M780 363C866 349 930 397 934 458C909 520 845 545 795 509C764 466 758 413 780 363Z"/>
+
+          <g id="relief">
+            <path class="ridge-shadow" d="M224 269C275 222 357 223 410 274C434 313 416 355 378 378C337 403 280 392 245 356C219 332 207 300 224 269Z"/>
+            <path class="ridge-face" d="M242 272C282 241 344 239 388 274C408 298 399 326 371 345C333 367 288 358 260 331C243 314 232 291 242 272Z"/>
+            <path class="ridge-shadow" d="M495 205C546 166 627 169 681 213C721 249 716 296 680 326C633 362 562 352 520 316C486 286 473 239 495 205Z"/>
+            <path class="ridge-face" d="M516 211C559 184 615 185 656 218C681 241 680 269 657 291C621 318 572 313 540 288C516 268 504 234 516 211Z"/>
+            <path class="ridge-shadow" d="M319 423C360 386 428 386 471 423C498 455 490 498 456 523C413 549 355 532 329 495C310 469 302 441 319 423Z"/>
+            <path class="ridge-face" d="M339 425C370 402 419 402 451 428C468 448 463 474 442 490C412 510 371 499 350 475C337 458 328 440 339 425Z"/>
+            <path class="ridge-shadow" d="M694 321C732 290 788 295 822 329C844 360 834 396 805 414C764 434 718 414 700 380C688 358 682 336 694 321Z"/>
+            <path class="ridge-face" d="M713 326C741 306 779 311 802 335C815 354 809 375 791 387C764 400 735 388 721 367C711 352 706 337 713 326Z"/>
+
+            <path class="contour contour-major" d="M204 248C270 192 374 200 438 260C475 312 452 382 395 420C329 456 247 423 207 363C183 327 179 281 204 248Z"/>
+            <path class="contour" d="M222 265C279 221 358 224 410 270C439 309 423 357 381 388C330 418 269 397 235 352C211 322 207 289 222 265Z"/>
+            <path class="contour" d="M248 280C289 249 348 248 386 280C408 308 398 340 367 361C328 383 286 366 260 335C244 315 238 296 248 280Z"/>
+
+            <path class="contour contour-major" d="M465 181C530 128 652 142 721 205C766 263 738 338 678 380C604 421 508 382 469 313C445 269 438 218 465 181Z"/>
+            <path class="contour" d="M488 199C545 157 630 164 688 214C720 253 704 306 660 338C604 370 535 346 501 300C476 267 469 227 488 199Z"/>
+            <path class="contour" d="M519 215C562 187 621 190 661 224C685 250 676 283 647 306C609 331 561 318 535 286C516 263 508 233 519 215Z"/>
+
+            <path class="contour contour-major" d="M286 406C339 355 440 360 500 416C535 468 510 536 456 570C392 601 316 561 286 502C269 468 266 432 286 406Z"/>
+            <path class="contour" d="M310 422C352 386 424 391 468 428C493 462 478 505 442 527C397 548 346 523 322 483C307 460 300 438 310 422Z"/>
+            <path class="contour" d="M341 437C371 415 417 417 446 442C461 463 453 488 432 501C402 515 370 500 352 476C341 461 334 447 341 437Z"/>
+
+            <path class="cliff" d="M230 318C272 278 330 265 387 281"/>
+            <path class="cliff-hatch" d="M235 326C278 289 333 278 384 292"/>
+            <path class="cliff" d="M514 265C560 228 626 223 680 251"/>
+            <path class="cliff-hatch" d="M520 275C566 240 622 237 673 261"/>
+            <path class="cliff" d="M328 474C371 444 425 445 468 473"/>
+            <path class="cliff-hatch" d="M334 484C375 457 422 458 460 482"/>
+            <path class="cliff" d="M714 368C750 342 793 345 818 376"/>
+          </g>
+
+          <g id="hydrology" aria-label="Rivers and lakes">
+            <path class="isley-water" d="M687 186C710 165 749 170 764 194C777 216 765 245 741 255C711 265 680 248 677 220C675 206 679 194 687 186Z"/>
+            <path class="isley-water" d="M475 276C493 261 520 265 531 285C539 304 528 326 507 331C482 334 463 318 464 297C464 288 468 281 475 276Z"/>
+            <path class="isley-water" d="M324 402C342 387 370 391 380 411C386 429 375 449 356 454C333 456 315 441 315 422C315 414 318 407 324 402Z"/>
+            <path class="isley-water" d="M805 397C824 377 857 378 873 399C885 419 875 447 851 456C826 464 799 448 797 425C796 414 799 405 805 397Z"/>
+
+            <path class="river-bed" d="M724 246C725 286 718 319 727 351C736 385 725 414 707 440C691 465 690 496 672 520C654 544 628 555 615 580C603 604 613 629 600 655"/>
+            <path class="river" d="M724 246C725 286 718 319 727 351C736 385 725 414 707 440C691 465 690 496 672 520C654 544 628 555 615 580C603 604 613 629 600 655"/>
+            <path class="river-highlight" d="M724 246C725 286 718 319 727 351C736 385 725 414 707 440C691 465 690 496 672 520C654 544 628 555 615 580C603 604 613 629 600 655"/>
+
+            <path class="river-bed" d="M505 327C521 354 531 383 553 407C578 434 609 450 627 477C645 503 648 531 630 554"/>
+            <path class="river" d="M505 327C521 354 531 383 553 407C578 434 609 450 627 477C645 503 648 531 630 554"/>
+            <path class="river-highlight" d="M505 327C521 354 531 383 553 407C578 434 609 450 627 477C645 503 648 531 630 554"/>
+
+            <path class="river-bed" d="M356 452C377 483 402 500 437 516C474 532 505 557 536 575C565 592 592 597 615 580"/>
+            <path class="river" d="M356 452C377 483 402 500 437 516C474 532 505 557 536 575C565 592 592 597 615 580"/>
+            <path class="river-highlight" d="M356 452C377 483 402 500 437 516C474 532 505 557 536 575C565 592 592 597 615 580"/>
+
+            <path class="river-bed" d="M600 655C623 676 653 688 682 699C713 710 734 727 755 748"/>
+            <path class="river" d="M600 655C623 676 653 688 682 699C713 710 734 727 755 748"/>
+            <path class="river-highlight" d="M600 655C623 676 653 688 682 699C713 710 734 727 755 748"/>
+
+            <path class="river-bed" d="M851 456C837 480 823 506 812 532C801 558 786 585 765 606"/>
+            <path class="river" d="M851 456C837 480 823 506 812 532C801 558 786 585 765 606"/>
+            <path class="river-highlight" d="M851 456C837 480 823 506 812 532C801 558 786 585 765 606"/>
+
+            <path class="river-bed" d="M126 615C151 629 173 653 181 681C192 714 218 738 252 754C278 767 300 791 315 819"/>
+            <path class="river" d="M126 615C151 629 173 653 181 681C192 714 218 738 252 754C278 767 300 791 315 819"/>
+            <path class="river-highlight" d="M126 615C151 629 173 653 181 681C192 714 218 738 252 754C278 767 300 791 315 819"/>
+
+            <path class="isley-water" d="M271 792C305 774 334 783 357 806C377 785 408 783 434 801C459 782 491 792 503 819C524 811 549 823 557 845C534 872 500 877 469 865C440 888 398 884 375 858C343 878 305 863 294 834C276 825 266 809 271 792Z"/>
+            <path class="river" d="M315 819C340 821 355 828 375 858M357 806C375 829 397 842 421 849M434 801C438 827 450 847 469 865M503 819C491 839 486 851 469 865"/>
+            <path class="river-highlight" d="M315 819C340 821 355 828 375 858M357 806C375 829 397 842 421 849M434 801C438 827 450 847 469 865M503 819C491 839 486 851 469 865"/>
+          </g>
+
+          <g id="terrain" aria-label="Mountain belts and major obstacles">
+            <path class="cliff" d="M181 357C247 286 331 246 411 254"/>
+            <path class="cliff-hatch" d="M186 369C250 300 331 261 406 267"/>
+            <path class="cliff" d="M430 206C516 143 640 143 731 202"/>
+            <path class="cliff-hatch" d="M439 219C521 160 635 159 719 213"/>
+            <path class="cliff" d="M279 421C338 372 430 372 500 424"/>
+            <path class="cliff-hatch" d="M286 434C343 390 425 390 489 436"/>
+            <path class="cliff" d="M674 307C742 278 823 309 855 373"/>
+          </g>
+        </g>
+
+        <use href="#gatewayMainland" class="coast-edge"/>
+        </g>
+
+        <image id="currentGatewayBaseMap"
+               href="https://myislemap.com/assets/gateway-preview.webp?v=20260718hq2"
+               x="0"
+               y="0"
+               width="1000"
+               height="1000"
+               preserveAspectRatio="none"
+               role="img"
+               aria-label="Current Gateway game-file basemap from MyIsleMap"/>
+        <g id="currentGatewayTiles"
+           pointer-events="none"
+           aria-label="Current Gateway high-resolution map tiles"/>
+        <rect id="terrainReadabilityWash" x="0" y="0" width="1000" height="1000"/>
+
+        <g id="roads" aria-label="Fallback road and trail network">
+          <path class="isley-road-casing" d="M108 520C184 513 249 487 318 452C386 418 456 399 534 397C614 395 694 367 756 321C817 277 871 266 929 277"/>
+          <path class="isley-road" d="M108 520C184 513 249 487 318 452C386 418 456 399 534 397C614 395 694 367 756 321C817 277 871 266 929 277"/>
+          <path class="isley-road-casing" d="M239 541C273 578 310 603 349 618C401 638 468 632 523 608C568 589 606 584 642 600C691 621 746 628 808 610"/>
+          <path class="isley-road" d="M239 541C273 578 310 603 349 618C401 638 468 632 523 608C568 589 606 584 642 600C691 621 746 628 808 610"/>
+          <path class="isley-road-casing" d="M349 618C321 672 302 718 291 770C285 812 292 849 322 884"/>
+          <path class="isley-road" d="M349 618C321 672 302 718 291 770C285 812 292 849 322 884"/>
+          <path class="isley-road-casing" d="M534 397C550 348 553 299 576 258C608 204 661 187 724 200"/>
+          <path class="isley-road" d="M534 397C550 348 553 299 576 258C608 204 661 187 724 200"/>
+          <path class="isley-road-casing" d="M642 600C640 544 650 489 675 438C704 380 748 343 801 319"/>
+          <path class="isley-road" d="M642 600C640 544 650 489 675 438C704 380 748 343 801 319"/>
+
+          <path class="isley-trail" d="M145 425C208 403 266 375 313 327C356 283 400 252 456 225"/>
+          <path class="isley-trail" d="M205 705C274 681 339 665 404 668C475 672 535 706 589 758"/>
+          <path class="isley-trail" d="M529 510C578 482 629 469 689 470C749 473 804 492 858 523"/>
+          <path class="isley-trail" d="M716 733C670 769 627 804 592 849"/>
+          <path class="isley-trail" d="M733 201C782 213 827 235 870 273"/>
+          <path class="rail" d="M195 522C224 542 253 564 279 594C300 620 318 651 326 684"/>
+        </g>
+
+        <g id="structures" aria-label="Major structures">
+          <g transform="translate(423 618)">
+            <polygon class="structure-dark" points="0,-66 58,-37 66,20 27,63 -34,58 -66,14 -54,-43"/>
+            <polygon class="structure" fill="url(#facilityGrid)" points="0,-57 50,-31 57,17 23,54 -29,50 -57,12 -46,-36"/>
+            <circle class="structure-dark" cx="0" cy="0" r="14"/>
+            <circle fill="none" stroke="#dfe4dc" stroke-width="1.5" cx="0" cy="0" r="8"/>
+            <path d="M0-57V-14M50-31L12-7M57 17L13 4M23 54L5 13M-29 50L-7 12M-57 12L-14 3M-46-36L-11-9"
+                  fill="none" stroke="#d4d9d2" stroke-width="1.4" opacity=".75"/>
+          </g>
+          <g transform="translate(929 277)">
+            <rect class="structure-dark" x="-21" y="-12" width="42" height="24" rx="3"/>
+            <rect class="structure" x="-17" y="-8" width="13" height="16"/>
+            <rect class="structure" x="2" y="-8" width="15" height="16"/>
+            <path d="M-25 15H27M-18 19H22" stroke="#c8d0c8" stroke-width="2"/>
+          </g>
+          <g transform="translate(529 351)">
+            <path class="structure-dark" d="M-17-5H17V5H-17Z"/>
+            <path d="M-11-11V11M11-11V11" stroke="#d1d7d1" stroke-width="2"/>
+          </g>
+        </g>
+
+        <g id="layer-locations" aria-label="Named regions and landmarks">
+          <g aria-label="Major region labels">
+            <text class="isley-label label-major" x="843" y="132">NE CAPE</text>
+            <text class="isley-label label-major" x="467" y="177">NORTH BAY</text>
+            <text class="isley-label label-major" x="772" y="235">NORTH PLAINS</text>
+            <text class="isley-label label-major" x="314" y="314">RIDGES</text>
+            <text class="isley-label label-major" x="532" y="352">WATER ACCESS</text>
+            <text class="isley-label label-major" x="675" y="437">FORKS PLAINS</text>
+            <text class="isley-label label-major" x="390" y="489">HIGHLAND</text>
+            <text class="isley-label label-major" x="613" y="574">DELTA</text>
+            <text class="isley-label label-major" x="291" y="710">SOUTH PLAINS</text>
+            <text class="isley-label label-major" x="500" y="815">SWAMPS</text>
+          </g>
+          <g aria-label="Regional labels">
+            <text class="isley-label label-minor" x="587" y="243">NORTHERN JUNGLE</text>
+            <text class="isley-label label-minor" x="915" y="276">PORT</text>
+            <text class="isley-label label-minor" x="828" y="422">EASTERN JUNGLE</text>
+            <text class="isley-label label-minor" x="915" y="457">EAST COAST</text>
+            <text class="isley-label label-minor" x="566" y="458">CENTRAL JUNGLE</text>
+            <text class="isley-label label-minor" x="863" y="512">TIDE POOL</text>
+            <text class="isley-label label-minor" x="105" y="525">WEST COAST</text>
+            <text class="isley-label label-minor" x="240" y="540">WEST RAIL</text>
+            <text class="isley-label label-minor" x="813" y="610">SANDBANK BAY</text>
+            <text class="isley-label label-minor" x="165" y="642">MUDFLATS</text>
+            <text class="isley-label label-minor" x="758" y="733">DELTA BAY</text>
+            <text class="isley-label label-minor" x="135" y="823">THE PIT</text>
+            <text class="isley-label label-minor" x="407" y="908">SOUTHERN BEACH WEST</text>
+            <text class="isley-label label-minor" x="576" y="905">SOUTHERN BEACH EAST</text>
+          </g>
+          <g aria-label="Detailed landmark labels">
+            <text class="isley-label label-detail water-label" x="720" y="220">NORTH LAKE</text>
+            <text class="isley-label label-detail water-label" x="501" y="305">DAM LAKE</text>
+            <text class="isley-label label-detail water-label" x="343" y="428">RIDGE POND</text>
+            <text class="isley-label label-detail" x="423" y="693">CENTRAL DOME</text>
+            <text class="isley-label label-detail" x="529" y="372">DAM</text>
+            <text class="isley-label label-detail" x="928" y="303">OCEANPORT</text>
+            <text class="isley-label label-detail water-label" x="626" y="532">RIVER FORKS</text>
+            <text class="isley-label label-detail water-label" x="392" y="862">SOUTHERN MARSH</text>
+          </g>
+          <circle class="poi-dot" cx="843" cy="145" r="5"/>
+          <circle class="poi-dot" cx="467" cy="189" r="5"/>
+          <circle class="poi-dot" cx="532" cy="365" r="5"/>
+          <circle class="poi-ring" cx="423" cy="618" r="7"/>
+          <circle class="poi-ring" cx="929" cy="277" r="7"/>
+          <circle class="poi-dot" cx="613" cy="588" r="5"/>
+          <circle class="poi-dot" cx="500" cy="829" r="5"/>
+        </g>
+        <g id="currentMapLabels"
+           visibility="visible"
+           aria-label="Current Gateway locations and water labels"/>
+        <g id="layer-sanctuaries"
+           aria-label="Current sanctuary zones"/>
+        <g id="layer-migration"
+           visibility="visible"
+           aria-label="Current migration zones"/>
+        <g id="layer-patrol"
+           visibility="visible"
+           aria-label="Current patrol zones"/>
+        <g id="layer-food"
+           visibility="hidden"
+           aria-label="Current Gateway food and resource points"/>
+        <g id="layer-heatmap"
+           visibility="hidden"
+           aria-label="Authorized live animal activity"/>
+
+        <g id="providerPlayers" aria-label="Authorized live players"/>
+      </svg>
+    </div>
+
+    <div id="mapHud" aria-hidden="true">
+      <div id="mapEdition">GATEWAY MAP · READ THE KEY</div>
+      <div id="mapKey">
+        <div class="map-key-title">MAP KEY</div>
+        <span class="map-key-item"><i class="map-key-mark you"></i>You + facing</span>
+        <span class="map-key-item"><i class="map-key-mark friend"></i>Friend</span>
+        <span class="map-key-item"><i class="map-key-mark animal"></i>Other player</span>
+        <span class="map-key-item"><i class="map-key-line"></i>Your route</span>
+        <span class="map-key-item"><i class="map-key-line trail"></i>Road / trail</span>
+        <span class="map-key-item"><i class="map-key-water"></i>Drinkable water</span>
+        <div class="map-key-title map-key-section">ZONES</div>
+        <span class="map-key-item"><i class="map-key-zone sanctuary"></i>Sanctuary (safe)</span>
+        <span class="map-key-item"><i class="map-key-zone migration"></i>Migration (diet)</span>
+        <span class="map-key-item"><i class="map-key-zone patrol"></i>Patrol (hunt)</span>
+        <div class="map-key-title map-key-section">FOOD SITES</div>
+        <span class="map-key-item map-key-extra"><i class="map-key-resource animals"></i>Animals (sites)</span>
+        <span class="map-key-item map-key-extra"><i class="map-key-resource herbs"></i>Plant sites</span>
+        <span class="map-key-item map-key-extra"><i class="map-key-resource earth"></i>Salt / mud / stone</span>
+      </div>
+      <div id="northArrow">N</div>
+      <div id="mapStatus">LIVE MAP · WAITING FOR YOUR POSITION</div>
+    </div>
+    <a id="mapSourceLink"
+       href="https://myislemap.com/"
+       target="_blank"
+       rel="noreferrer"
+       title="Open current Gateway map source and attribution">
+      CURRENT MAP · MYISLEMAP · GAME IMAGERY © AFTERTHOUGHT
+    </a>
+  </div>
+
+  <div id="providerControls" aria-hidden="true">
+    <button aria-checked="true" aria-label="Show locations"></button>
+    <button aria-checked="true" aria-label="Show sanctuaries"></button>
+    <button aria-checked="true" aria-label="Show migration zones"></button>
+    <button aria-checked="true" aria-label="Show patrol candidates"></button>
+    <button aria-checked="false" aria-label="Toggle food and resources"></button>
+    <button aria-checked="false" aria-label="Toggle player heatmap"></button>
+    <button aria-checked="true" aria-label="Show my path"></button>
+    <button aria-checked="true" aria-label="Show friends paths"></button>
+  </div>
+
+  <script>
+    (() => {
+      const map = document.getElementById("map");
+      const layer = document.getElementById("layer");
+      const playerLayer = document.getElementById("providerPlayers");
+      const currentMapLabels = document.getElementById("currentMapLabels");
+      const currentGatewayBaseMap = document.getElementById("currentGatewayBaseMap");
+      const currentGatewayTiles = document.getElementById("currentGatewayTiles");
+      const sanctuaryLayer = document.getElementById("layer-sanctuaries");
+      const migrationLayer = document.getElementById("layer-migration");
+      const patrolLayer = document.getElementById("layer-patrol");
+      const resourceLayer = document.getElementById("layer-food");
+      const heatmapLayer = document.getElementById("layer-heatmap");
+      const mapSourceLink = document.getElementById("mapSourceLink");
+      const status = document.getElementById("mapStatus");
+      const svgNamespace = "http://www.w3.org/2000/svg";
+      const svg = layer.querySelector("svg");
+
+      const currentMapSource = {
+        basemapUrl: "https://myislemap.com/assets/gateway-preview.webp?v=20260718hq2",
+        tileUrlTemplate:
+          "https://myislemap.com/assets/gateway-tiles/gateway-{col}-{row}.jpg?v=20260718hq2",
+        attributionUrl: "https://myislemap.com/",
+        sourceWidth: 7800,
+        sourceHeight: 7817,
+        tileColumns: 8,
+        tileRows: 8,
+        tileSize: 1024,
+        mapDataVersion: "",
+        previewVersion: "20260718hq2",
+        referenceDate: "2026-07-18"
+      };
+
+      // The current public Gateway calibration uses the game's second Asset
+      // Location value horizontally. The first Asset Location value increases
+      // from north to south, matching the vertical image axis.
+      const calibration = {
+        a: { worldX: -607000, worldY: -505000, u: 0, v: 0 },
+        b: { worldX:  509000, worldY:  607000, u: 1, v: 1 },
+        swapAxes: true,
+        coordinateSpace: "gateway-current-gamefiles-2026-07-18"
+      };
+      const model = { calibration, players: [] };
+      map["__reactFiber$isley"] = { memoizedProps: model, return: null, alternate: null };
+      let vitals = null;
+      let currentDataset = null;
+      let zoomScale = 1;
+      let tileFrame = 0;
+
+      const escapeText = value => String(value ?? "").slice(0, 32);
+      const worldToMap = player => {
+        const worldX = Number(player.x);
+        const worldY = Number(player.y);
+        const horizontal = calibration.swapAxes ? worldY : worldX;
+        const vertical = calibration.swapAxes ? worldX : worldY;
+        const horizontalA = calibration.swapAxes ? calibration.a.worldY : calibration.a.worldX;
+        const horizontalB = calibration.swapAxes ? calibration.b.worldY : calibration.b.worldX;
+        const verticalA = calibration.swapAxes ? calibration.a.worldX : calibration.a.worldY;
+        const verticalB = calibration.swapAxes ? calibration.b.worldX : calibration.b.worldY;
+        return {
+          x: 1000 * (calibration.a.u
+            + ((horizontal - horizontalA) / (horizontalB - horizontalA))
+              * (calibration.b.u - calibration.a.u)),
+          y: 1000 * (calibration.a.v
+            + ((vertical - verticalA) / (verticalB - verticalA))
+              * (calibration.b.v - calibration.a.v))
+        };
+      };
+
+      const createSvgElement = (name, attributes = {}) => {
+        const element = document.createElementNS(svgNamespace, name);
+        for (const [key, value] of Object.entries(attributes)) {
+          element.setAttribute(key, String(value));
+        }
+        return element;
+      };
+
+      const validMapNumber = value => {
+        const number = Number(value);
+        return Number.isFinite(number) && number >= 0 && number <= 1000
+          ? number
+          : null;
+      };
+
+      const zoneCenter = zone => {
+        const cx = validMapNumber(zone?.cx);
+        const cy = validMapNumber(zone?.cy);
+        if (cx !== null && cy !== null) return { x: cx, y: cy };
+        const points = Array.isArray(zone?.points)
+          ? zone.points
+              .map(point => ({
+                x: validMapNumber(point?.x),
+                y: validMapNumber(point?.y)
+              }))
+              .filter(point => point.x !== null && point.y !== null)
+          : [];
+        if (points.length < 3) return null;
+        return {
+          x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+          y: points.reduce((sum, point) => sum + point.y, 0) / points.length
+        };
+      };
+
+      const renderZoneLayer = (root, zones, className) => {
+        root.replaceChildren();
+        for (const zone of Array.isArray(zones) ? zones.slice(0, 100) : []) {
+          const type = String(zone?.type || "").toLowerCase();
+          let shape = null;
+          if (type === "circle") {
+            const cx = validMapNumber(zone?.cx);
+            const cy = validMapNumber(zone?.cy);
+            const radius = Number(zone?.r);
+            if (cx === null || cy === null || !Number.isFinite(radius)
+                || radius <= 0 || radius > 250) continue;
+            shape = createSvgElement("circle", {
+              cx,
+              cy,
+              r: radius,
+              class: `isley-zone ${className}`.trim()
+            });
+          } else if (type === "polygon") {
+            const points = (Array.isArray(zone?.points) ? zone.points : [])
+              .map(point => ({
+                x: validMapNumber(point?.x),
+                y: validMapNumber(point?.y)
+              }))
+              .filter(point => point.x !== null && point.y !== null)
+              .slice(0, 64);
+            if (points.length < 3) continue;
+            shape = createSvgElement("polygon", {
+              points: points.map(point => `${point.x},${point.y}`).join(" "),
+              class: `isley-zone ${className}`.trim()
+            });
+          }
+          if (!shape) continue;
+          shape.dataset.sourceZone = "current-gamefiles";
+          const title = createSvgElement("title");
+          title.textContent = escapeText(zone?.label || "Gateway zone");
+          shape.appendChild(title);
+          root.appendChild(shape);
+        }
+      };
+
+      const renderResources = resources => {
+        resourceLayer.replaceChildren();
+        const buckets = [
+          ["animals", resources?.animals],
+          ["herbs", resources?.herbs],
+          ["earth", resources?.earth]
+        ];
+        for (const [bucket, values] of buckets) {
+          for (const resource of Array.isArray(values) ? values.slice(0, 1000) : []) {
+            const x = validMapNumber(resource?.x);
+            const y = validMapNumber(resource?.y);
+            if (x === null || y === null) continue;
+            const marker = createSvgElement("circle", {
+              cx: x,
+              cy: y,
+              r: bucket === "animals" ? 3.15 : bucket === "herbs" ? 2.8 : 2.7,
+              class: "gateway-resource",
+              "data-bucket": bucket,
+              "vector-effect": "non-scaling-stroke"
+            });
+            const title = createSvgElement("title");
+            title.textContent = `${escapeText(resource?.name || "Resource")} · ${
+              escapeText(resource?.group || bucket)}`;
+            marker.appendChild(title);
+            resourceLayer.appendChild(marker);
+          }
+        }
+      };
+
+      const renderCurrentLabels = dataset => {
+        currentMapLabels.replaceChildren();
+        const candidates = [];
+        const zones = dataset?.zones || {};
+        const zoneLists = [
+          [zones.sanctuaries, "sanctuary"],
+          [zones.migrationCandidates, "migration"],
+          [zones.patrolCandidates, "patrol"]
+        ];
+        for (const [list, kind] of zoneLists) {
+          for (const zone of Array.isArray(list) ? list : []) {
+            const point = zoneCenter(zone);
+            const label = escapeText(zone?.label);
+            if (point && label) candidates.push({ ...point, label, water: false, kind });
+          }
+        }
+        for (const entry of Array.isArray(dataset?.waterLabels)
+          ? dataset.waterLabels.slice(0, 100)
+          : []) {
+          const x = validMapNumber(entry?.x);
+          const y = validMapNumber(entry?.y);
+          const label = escapeText(entry?.label);
+          if (x !== null && y !== null && label) {
+            candidates.push({ x, y, label, water: true, kind: "water" });
+          }
+        }
+
+        const seen = new Set();
+        for (const entry of candidates) {
+          const key = entry.label.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const zoneTone = entry.kind === "sanctuary"
+            ? "zone-label-sanctuary"
+            : entry.kind === "migration"
+              ? "zone-label-migration"
+              : entry.kind === "patrol"
+                ? "zone-label-patrol"
+                : "";
+          const text = createSvgElement("text", {
+            x: entry.x,
+            y: entry.y,
+            class: `isley-label current-map-label ${
+              entry.water
+                ? "label-detail water-label"
+                : `label-minor ${zoneTone}`.trim()}`
+          });
+          text.textContent = entry.label.toUpperCase();
+          currentMapLabels.appendChild(text);
+        }
+        map.dataset.currentLabelsStatus =
+          currentMapLabels.childElementCount >= 15 ? "ready" : "unavailable";
+      };
+
+      const isTrustedMapUrl = (value, path) => {
+        try {
+          const url = new URL(String(value || ""));
+          return url.protocol === "https:"
+            && url.hostname === "myislemap.com"
+            && url.pathname.endsWith(path);
+        } catch {
+          return false;
+        }
+      };
+
+      const validateTileTemplate = value =>
+        isTrustedMapUrl(String(value || "")
+          .replace("{col}", "0")
+          .replace("{row}", "0"), "/assets/gateway-tiles/gateway-0-0.jpg")
+        && String(value).includes("{col}")
+        && String(value).includes("{row}");
+
+      const setTerrainDataset = dataset => {
+        const basemap = dataset?.basemap;
+        const zones = dataset?.zones;
+        const resources = dataset?.resources;
+        if (!dataset || typeof dataset !== "object"
+            || !isTrustedMapUrl(dataset.sourceUrl, "/map-data.js")
+            || !isTrustedMapUrl(basemap?.previewUrl, "/assets/gateway-preview.webp")
+            || !validateTileTemplate(basemap?.tileUrlTemplate)
+            || !Array.isArray(zones?.sanctuaries)
+            || !Array.isArray(zones?.migrationCandidates)
+            || !Array.isArray(zones?.patrolCandidates)
+            || !Array.isArray(resources?.animals)
+            || !Array.isArray(resources?.herbs)
+            || !Array.isArray(resources?.earth)
+            || zones.sanctuaries.length < 1 || zones.sanctuaries.length > 100
+            || zones.migrationCandidates.length < 1 || zones.migrationCandidates.length > 100
+            || zones.patrolCandidates.length < 1 || zones.patrolCandidates.length > 100
+            || resources.animals.length < 1 || resources.animals.length > 1000
+            || resources.herbs.length < 1 || resources.herbs.length > 1000
+            || resources.earth.length < 1 || resources.earth.length > 1000) {
+          currentDataset = null;
+          map.dataset.mapDataStatus = "unavailable";
+          return false;
+        }
+
+        currentDataset = dataset;
+        Object.assign(currentMapSource, {
+          basemapUrl: String(basemap.previewUrl),
+          tileUrlTemplate: String(basemap.tileUrlTemplate),
+          attributionUrl: String(basemap.attributionUrl || "https://myislemap.com/"),
+          sourceWidth: Math.max(1, Number(basemap.sourceWidth) || 7800),
+          sourceHeight: Math.max(1, Number(basemap.sourceHeight) || 7817),
+          tileColumns: Math.min(16, Math.max(1, Number(basemap.tileColumns) || 8)),
+          tileRows: Math.min(16, Math.max(1, Number(basemap.tileRows) || 8)),
+          tileSize: Math.min(2048, Math.max(256, Number(basemap.tileSize) || 1024)),
+          mapDataVersion: escapeText(dataset.sourceVersion || "live"),
+          previewVersion: escapeText(basemap.previewVersion || "live"),
+          referenceDate: escapeText(basemap.referenceDate || "")
+        });
+        mapSourceLink.href = currentMapSource.attributionUrl;
+        currentGatewayBaseMap.setAttribute("href", currentMapSource.basemapUrl);
+        renderZoneLayer(sanctuaryLayer, zones.sanctuaries, "isley-zone-sanctuary");
+        renderZoneLayer(migrationLayer, zones.migrationCandidates, "isley-zone-migration");
+        renderZoneLayer(patrolLayer, zones.patrolCandidates, "isley-zone-patrol");
+        renderResources(resources);
+        renderCurrentLabels(dataset);
+        map.dataset.mapDataStatus = "ready";
+        updateHighResolutionTiles();
+        render();
+        return true;
+      };
+
+      const setMapSourceStatus = online => {
+        map.dataset.mapSourceStatus = online ? "online" : "offline";
+        mapSourceLink.textContent = online
+          ? "CURRENT MAP · MYISLEMAP · GAME IMAGERY © AFTERTHOUGHT"
+          : "SCHEMATIC OFFLINE FALLBACK · CURRENT MAP UNAVAILABLE";
+        render();
+      };
+
+      // Player markers are keyed and reused so CSS transitions interpolate
+      // movement between provider frames instead of teleporting on rebuild.
+      const playerNodes = new Map();
+      const playerKeyOf = player => (player.self
+        ? "self"
+        : `${player.friend ? "friend" : "other"}:${player.label || ""}`);
+
+      const createPlayerNode = (key, player) => {
+        const group = createSvgElement("g");
+        const role = player.self ? "self" : player.friend ? "friend" : "other";
+        group.dataset.isleyRole = role;
+        group.dataset.isleyPlayer = "true";
+
+        let arrow = null;
+        let heat = null;
+        if (player.self) {
+          const circle = createSvgElement("circle", {
+            cx: 0,
+            cy: 0,
+            r: 9,
+            class: "fill-amber-400",
+            fill: "#e6f7fb",
+            stroke: "#38bdf8",
+            "stroke-width": 3,
+            "vector-effect": "non-scaling-stroke",
+            filter: "url(#markerShadow)"
+          });
+          arrow = createSvgElement("polygon", {
+            points: "0,-19 6,-7 0,-10 -6,-7",
+            fill: "#1d9ee8",
+            stroke: "#dff7ff",
+            "stroke-width": 1.4,
+            "vector-effect": "non-scaling-stroke"
+          });
+          group.append(circle, arrow);
+        } else {
+          const marker = createSvgElement("circle", {
+            cx: 0,
+            cy: 0,
+            r: player.friend ? 7 : 6,
+            class: player.friend ? "fill-emerald-400" : "fill-rose-400",
+            fill: player.friend ? "#34d399" : "#fb7185",
+            stroke: "#f8fafc",
+            "stroke-width": 2,
+            "vector-effect": "non-scaling-stroke"
+          });
+          group.appendChild(marker);
+          heat = createSvgElement("circle", {
+            cx: 0,
+            cy: 0,
+            r: player.friend ? 42 : 34,
+            fill: player.friend ? "#34d399" : "#fb7185",
+            opacity: player.friend ? .12 : .1,
+            "data-isley-live-heat": "true"
+          });
+          heatmapLayer.appendChild(heat);
+        }
+
+        const label = createSvgElement("text", {
+          x: 13,
+          y: -11,
+          class: "isley-player-label",
+          "font-family": "Segoe UI, sans-serif",
+          "font-weight": 760,
+          fill: "#f8fafc",
+          stroke: "#020617",
+          "stroke-width": 3,
+          "paint-order": "stroke"
+        });
+        group.appendChild(label);
+        playerLayer.appendChild(group);
+        const node = { group, arrow, heat, label };
+        playerNodes.set(key, node);
+        return node;
+      };
+
+      const render = () => {
+        const alive = new Set();
+        for (const player of model.players) {
+          if (!Number.isFinite(Number(player.x)) || !Number.isFinite(Number(player.y))) continue;
+          const point = worldToMap(player);
+          if (point.x < 0 || point.x > 1000 || point.y < 0 || point.y > 1000) continue;
+          const key = playerKeyOf(player);
+          if (alive.has(key)) continue;
+          alive.add(key);
+
+          const node = playerNodes.get(key) || createPlayerNode(key, player);
+          node.group.dataset.isleyUpdatedAt = String(Number(player.updatedAt) || 0);
+          node.group.style.transform = `translate(${point.x}px, ${point.y}px)`;
+          if (node.arrow) {
+            node.arrow.setAttribute("transform", `rotate(${180 - (Number(player.yaw) || 0)})`);
+          }
+          if (node.heat) {
+            node.heat.style.transform = `translate(${point.x}px, ${point.y}px)`;
+          }
+          node.label.textContent = player.self ? "You" : escapeText(player.label || "Player");
+        }
+
+        for (const [key, node] of playerNodes) {
+          if (alive.has(key)) continue;
+          node.group.remove();
+          if (node.heat) node.heat.remove();
+          playerNodes.delete(key);
+        }
+
+        const self = model.players.find(player => player.self);
+        const others = model.players.filter(player => !player.self).length;
+        const sourceLabel = map.dataset.mapSourceStatus === "online"
+          ? map.dataset.mapDataStatus === "ready"
+            ? "LIVE GATEWAY MAP"
+            : "LIVE MAP · SYNCING LAYERS"
+          : map.dataset.mapSourceStatus === "offline"
+            ? "OFFLINE FALLBACK MAP"
+            : "LOADING MAP";
+        status.textContent = self
+          ? `${sourceLabel} · FOLLOWING YOU · ${others} OTHER PLAYER${others === 1 ? "" : "S"} VISIBLE`
+          : `${sourceLabel} · WAITING FOR YOUR POSITION`;
+      };
+
+      currentGatewayBaseMap.addEventListener("load", () => setMapSourceStatus(true));
+      currentGatewayBaseMap.addEventListener("error", () => setMapSourceStatus(false));
+      currentGatewayBaseMap.setAttribute("href", currentMapSource.basemapUrl);
+
+      const normalizePlayer = (player, index) => ({
+        id: escapeText(player?.id || `player-${index + 1}`),
+        label: escapeText(player?.label || player?.name || "Player"),
+        x: Number(player?.x),
+        y: Number(player?.y),
+        z: Number(player?.z) || 0,
+        yaw: Number(player?.yaw) || 0,
+        self: player?.self === true,
+        friend: player?.friend === true,
+        updatedAt: Number(player?.updatedAt) || 0
+      });
+
+      const setPlayers = players => {
+        const values = Array.isArray(players) ? players.slice(0, 128) : [];
+        model.players = values.map(normalizePlayer)
+          .filter(player => Number.isFinite(player.x) && Number.isFinite(player.y));
+        render();
+        return true;
+      };
+
+      let coordinateSelf = null;
+      const setSelf = (value, rememberCoordinate = true) => {
+        const player = normalizePlayer({ ...value, self: true, label: "You" }, 0);
+        if (!Number.isFinite(player.x) || !Number.isFinite(player.y)) return false;
+        if (rememberCoordinate && player.id === "self-coordinate") {
+          coordinateSelf = player;
+        }
+        model.players = [player, ...model.players.filter(candidate => !candidate.self)];
+        render();
+        return true;
+      };
+
+      const setSnapshot = snapshot => {
+        if (!snapshot || typeof snapshot !== "object") return false;
+        const updatedAt = Number(snapshot.updatedAt) || Date.now();
+        const players = Array.isArray(snapshot.players)
+          ? snapshot.players.map(player => ({ ...player, updatedAt: Number(player?.updatedAt) || updatedAt }))
+          : [];
+        setPlayers(players);
+        if (snapshot.self) {
+          const snapshotSelfUpdatedAt = Number(snapshot.self?.updatedAt) || updatedAt;
+          const coordinateUpdatedAt = Number(coordinateSelf?.updatedAt) || 0;
+          // Prefer a newer Player Sync / Asset Location stamp over an older provider frame
+          // so LOCATION DATA freshness cannot move backward after a fresh acquire.
+          if (coordinateSelf
+              && coordinateUpdatedAt > snapshotSelfUpdatedAt
+              && Number.isFinite(Number(coordinateSelf.x))
+              && Number.isFinite(Number(coordinateSelf.y))) {
+            setSelf(coordinateSelf, false);
+          } else {
+            setSelf({
+              ...snapshot.self,
+              updatedAt: snapshotSelfUpdatedAt
+            }, false);
+          }
+        } else if (coordinateSelf) {
+          setSelf(coordinateSelf, false);
+        }
+        vitals = snapshot.vitals && typeof snapshot.vitals === "object"
+          ? { ...snapshot.vitals }
+          : null;
+        return true;
+      };
+
+      // Tiles that failed to load are retried with per-attempt backoff
+      // (4s, 8s, then abandoned) instead of leaving silent gaps.
+      const failedGatewayTiles = new Map();
+
+      const updateHighResolutionTiles = () => {
+        if (tileFrame) cancelAnimationFrame(tileFrame);
+        tileFrame = requestAnimationFrame(() => {
+          tileFrame = 0;
+          if (zoomScale < 1.85 || map.dataset.mapSourceStatus !== "online"
+              || !validateTileTemplate(currentMapSource.tileUrlTemplate)) {
+            currentGatewayTiles.replaceChildren();
+            map.dataset.highResolutionTileCount = "0";
+            return;
+          }
+
+          let bounds = { left: 0, top: 0, right: 1000, bottom: 1000 };
+          try {
+            const inverse = svg.getScreenCTM()?.inverse();
+            const viewport = map.getBoundingClientRect();
+            if (inverse && viewport.width > 0 && viewport.height > 0) {
+              const corners = [
+                new DOMPoint(viewport.left, viewport.top).matrixTransform(inverse),
+                new DOMPoint(viewport.right, viewport.top).matrixTransform(inverse),
+                new DOMPoint(viewport.left, viewport.bottom).matrixTransform(inverse),
+                new DOMPoint(viewport.right, viewport.bottom).matrixTransform(inverse)
+              ];
+              bounds = {
+                left: Math.max(0, Math.min(...corners.map(point => point.x))),
+                top: Math.max(0, Math.min(...corners.map(point => point.y))),
+                right: Math.min(1000, Math.max(...corners.map(point => point.x))),
+                bottom: Math.min(1000, Math.max(...corners.map(point => point.y)))
+              };
+            }
+          } catch {
+          }
+
+          const sourceWidth = currentMapSource.sourceWidth;
+          const sourceHeight = currentMapSource.sourceHeight;
+          const tileSize = currentMapSource.tileSize;
+          const startColumn = Math.max(0,
+            Math.floor(bounds.left / 1000 * sourceWidth / tileSize) - 1);
+          const endColumn = Math.min(currentMapSource.tileColumns - 1,
+            Math.floor(bounds.right / 1000 * sourceWidth / tileSize) + 1);
+          const startRow = Math.max(0,
+            Math.floor(bounds.top / 1000 * sourceHeight / tileSize) - 1);
+          const endRow = Math.min(currentMapSource.tileRows - 1,
+            Math.floor(bounds.bottom / 1000 * sourceHeight / tileSize) + 1);
+          const center = {
+            x: (bounds.left + bounds.right) / 2,
+            y: (bounds.top + bounds.bottom) / 2
+          };
+          const candidates = [];
+          for (let row = startRow; row <= endRow; row++) {
+            for (let column = startColumn; column <= endColumn; column++) {
+              const sourceX = column * tileSize;
+              const sourceY = row * tileSize;
+              const x = sourceX / sourceWidth * 1000;
+              const y = sourceY / sourceHeight * 1000;
+              const width = Math.min(tileSize, sourceWidth - sourceX) / sourceWidth * 1000;
+              const height = Math.min(tileSize, sourceHeight - sourceY) / sourceHeight * 1000;
+              candidates.push({
+                column,
+                row,
+                x,
+                y,
+                width,
+                height,
+                distance: Math.hypot(x + width / 2 - center.x, y + height / 2 - center.y)
+              });
+            }
+          }
+          const lite = document.documentElement.dataset.isleyLite === "true";
+          const selected = candidates
+            .sort((a, b) => a.distance - b.distance)
+            .slice(0, lite ? 12 : 25);
+          const existing = new Map(
+            [...currentGatewayTiles.querySelectorAll("image")]
+              .map(image => [image.dataset.tileKey, image]));
+          const keep = new Set();
+          for (const tile of selected) {
+            const key = `${tile.column}-${tile.row}`;
+            keep.add(key);
+            let image = existing.get(key);
+            if (!image) {
+              const failure = failedGatewayTiles.get(key);
+              if (failure
+                  && (failure.attempts >= 3
+                      || Date.now() - failure.at < 4000 * failure.attempts)) {
+                continue;
+              }
+              image = createSvgElement("image", {
+                preserveAspectRatio: "none",
+                decoding: "async"
+              });
+              image.dataset.tileKey = key;
+              image.addEventListener("error", () => {
+                const prior = failedGatewayTiles.get(key);
+                if (failedGatewayTiles.size > 128) failedGatewayTiles.clear();
+                const attempts = (prior?.attempts || 0) + 1;
+                failedGatewayTiles.set(key, { attempts, at: Date.now() });
+                image.remove();
+                if (attempts < 3) {
+                  setTimeout(() => updateHighResolutionTiles(), 4000 * attempts + 100);
+                }
+              }, { once: true });
+              image.addEventListener("load", () => failedGatewayTiles.delete(key), { once: true });
+              image.setAttribute("href", currentMapSource.tileUrlTemplate
+                .replace("{col}", String(tile.column))
+                .replace("{row}", String(tile.row)));
+              currentGatewayTiles.appendChild(image);
+            }
+            image.setAttribute("x", String(tile.x));
+            image.setAttribute("y", String(tile.y));
+            image.setAttribute("width", String(tile.width + .12));
+            image.setAttribute("height", String(tile.height + .12));
+          }
+          for (const [key, image] of existing) {
+            if (!keep.has(key)) image.remove();
+          }
+          map.dataset.highResolutionTileCount =
+            String(currentGatewayTiles.childElementCount);
+        });
+      };
+
+      const updateZoomBand = () => {
+        const transform = layer.style.transform || "";
+        const match = transform.match(/scale\(\s*([\d.]+)\s*\)/i);
+        const scale = match ? Number(match[1]) : 1;
+        zoomScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+        map.style.setProperty("--isley-inverse-map-scale", String(1 / Math.max(.01, scale)));
+        map.dataset.zoomBand = scale >= 1.85
+          ? "local"
+          : scale >= 1.18
+            ? "regional"
+            : "overview";
+        updateHighResolutionTiles();
+      };
+      new MutationObserver(updateZoomBand).observe(layer, {
+        attributes: true,
+        attributeFilter: ["style"]
+      });
+
+      const layerMap = {
+        "Show locations": "currentMapLabels",
+        "Show sanctuaries": "layer-sanctuaries",
+        "Show migration zones": "layer-migration",
+        "Show patrol candidates": "layer-patrol",
+        "Toggle food and resources": "layer-food",
+        "Toggle player heatmap": "layer-heatmap"
+      };
+      for (const button of document.querySelectorAll("#providerControls button")) {
+        button.addEventListener("click", () => {
+          const next = button.getAttribute("aria-checked") !== "true";
+          button.setAttribute("aria-checked", String(next));
+          const target = document.getElementById(layerMap[button.getAttribute("aria-label")]);
+          if (target) target.setAttribute("visibility", next ? "visible" : "hidden");
+        });
+      }
+
+      window.__isleyLocalMap = {
+        calibration,
+        setPlayers,
+        setSelf,
+        setSnapshot,
+        setTerrainDataset,
+        getVitals: () => vitals ? { ...vitals } : null,
+        describe: () => ({
+          source: map.dataset.mapSourceStatus === "online"
+            ? "myislemap-current-gamefiles"
+            : "isley-schematic-offline-fallback",
+          sourceUrl: currentMapSource.attributionUrl,
+          sourceStatus: map.dataset.mapSourceStatus,
+          mapDataStatus: map.dataset.mapDataStatus || "loading",
+          referenceDate: currentMapSource.referenceDate,
+          mapVersion: currentMapSource.mapDataVersion || currentMapSource.previewVersion,
+          terrainRevision: "current-gateway-gamefiles-with-schematic-fallback-v4",
+          coordinateSpace: calibration.coordinateSpace,
+          swapAxes: calibration.swapAxes,
+          zoneCounts: {
+            sanctuaries: sanctuaryLayer.childElementCount,
+            migrationCandidates: migrationLayer.childElementCount,
+            patrolCandidates: patrolLayer.childElementCount
+          },
+          resourceCount: resourceLayer.childElementCount,
+          locationCount: currentMapLabels.childElementCount,
+          liveHeatCount: heatmapLayer.childElementCount,
+          highResolutionTileCount: currentGatewayTiles.childElementCount,
+          playerCount: model.players.length,
+          hasSelf: model.players.some(player => player.self)
+        })
+      };
+      updateZoomBand();
+      render();
+    })();
+  </script>
+</body>
+</html>

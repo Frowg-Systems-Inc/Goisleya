@@ -1,0 +1,73 @@
+name: Package Isley release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: Notes written into Isley-release.json
+        required: false
+        default: >-
+          Automatic update notifications and verified one-click installation.
+
+permissions:
+  contents: write
+
+concurrency:
+  group: package-isley-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - name: Check out Isley
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: download-site/package-lock.json
+
+      - name: Package Windows archives
+        shell: pwsh
+        env:
+          # Optional Authenticode inputs (set repository secrets to sign releases):
+          # ISLEY_CODE_SIGN_PFX_BASE64 (base64 PFX content, + ISLEY_CODE_SIGN_PASSWORD)
+          # or ISLEY_CODE_SIGN_THUMBPRINT for a cert already in the runner's store.
+          ISLEY_CODE_SIGN_PFX: ${{ secrets.ISLEY_CODE_SIGN_PFX }}
+          ISLEY_CODE_SIGN_PFX_BASE64: ${{ secrets.ISLEY_CODE_SIGN_PFX_BASE64 }}
+          ISLEY_CODE_SIGN_PASSWORD: ${{ secrets.ISLEY_CODE_SIGN_PASSWORD }}
+          ISLEY_CODE_SIGN_THUMBPRINT: ${{ secrets.ISLEY_CODE_SIGN_THUMBPRINT }}
+          ISLEY_CODE_SIGN_TIMESTAMP_URL: ${{ secrets.ISLEY_CODE_SIGN_TIMESTAMP_URL }}
+        run: .\scripts\package-isley-1.3.ps1
+
+      - name: Stage download site release
+        shell: pwsh
+        run: |
+          Set-Location download-site
+          npm ci
+          npm run release:update -- -ReleaseNotes "${{ inputs.release_notes }}"
+          npm test
+
+      - name: Upload release archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: isley-release-package
+          path: |
+            artifacts/Isley-Windows-x64-*.zip
+            artifacts/Isley-Server-Network-*.zip
+            download-site/public/Isley-Windows-x64.zip
+            download-site/public/Isley-Server-Network.zip
+            download-site/public/Isley-release.json
+          if-no-files-found: error

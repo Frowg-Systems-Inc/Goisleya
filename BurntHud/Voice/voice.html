@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src ws: wss:; media-src blob:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Isley Voice Engine</title>
+  <link rel="stylesheet" href="voice.css">
+</head>
+<body>
+  <main aria-label="Isley built-in voice engine">
+    <span id="state">READY</span>
+    <div id="audio"></div>
+  </main>
+  <script src="voice-crypto.js"></script>
+  <script src="voice.js"></script>
+</body>
+</html>

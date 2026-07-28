@@ -1,0 +1,183 @@
+<Application x:Class="Isley.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <SolidColorBrush x:Key="AccentBrush" Color="#FF38BDF8" />
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#FF7DD3FC" />
+        <SolidColorBrush x:Key="ActiveToggleBrush" Color="#FF075985" />
+        <SolidColorBrush x:Key="BrandRedBrush" Color="#FFE21D2D" />
+        <SolidColorBrush x:Key="BrandRedGlowBrush" Color="#FFFF4052" />
+        <SolidColorBrush x:Key="BrandSurfaceBrush" Color="#FF130A0D" />
+        <SolidColorBrush x:Key="BrandBorderBrush" Color="#D9F02A3D" />
+        <SolidColorBrush x:Key="SuccessBrush" Color="#FF58D68D" />
+        <SolidColorBrush x:Key="WarningBrush" Color="#FFFFB44A" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#F40A0E14" />
+        <SolidColorBrush x:Key="RaisedSurfaceBrush" Color="#F2171D26" />
+        <SolidColorBrush x:Key="MapChromeBrush" Color="#F20A0F16" />
+        <SolidColorBrush x:Key="SubtleBorderBrush" Color="#4D64748B" />
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFF8FAFC" />
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#FF94A3B8" />
+
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="Background" Value="{StaticResource RaisedSurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="#557E8995" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FF262C33" />
+                                <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ChromeButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+
+        <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinWidth" Value="70" />
+            <Setter Property="Margin" Value="0,0,7,0" />
+        </Style>
+
+        <Style x:Key="MapChipButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Background" Value="#F20A0F16" />
+            <Setter Property="BorderBrush" Value="#8064748B" />
+        </Style>
+
+        <Style x:Key="DrawerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Height" Value="Auto" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Background" Value="#D919202A" />
+            <Setter Property="BorderBrush" Value="#5564748B" />
+        </Style>
+
+        <Style x:Key="DrawerTabButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="Padding" Value="2,0" />
+            <Setter Property="FontSize" Value="8.5" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Background" Value="#D919202A" />
+            <Setter Property="BorderBrush" Value="#5564748B" />
+        </Style>
+
+        <Style x:Key="DrawerCompactButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinHeight" Value="31" />
+            <Setter Property="Height" Value="Auto" />
+            <Setter Property="Margin" Value="2" />
+            <Setter Property="Padding" Value="5,5" />
+            <Setter Property="FontSize" Value="8.5" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Background" Value="#D919202A" />
+            <Setter Property="BorderBrush" Value="#5564748B" />
+        </Style>
+
+        <Style x:Key="HudMicroButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="17" />
+            <Setter Property="Margin" Value="5,0,0,0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="6.5" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Background" Value="#6619202A" />
+            <Setter Property="BorderBrush" Value="#66FFFFFF" />
+        </Style>
+
+        <Style x:Key="DrawerTextBox" TargetType="TextBox">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Padding" Value="9,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="#D919202A" />
+            <Setter Property="BorderBrush" Value="#5564748B" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style x:Key="DrawerPasswordBox" TargetType="PasswordBox">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Padding" Value="9,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="#D919202A" />
+            <Setter Property="BorderBrush" Value="#5564748B" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style x:Key="DrawerComboBox" TargetType="ComboBox">
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Padding" Value="7,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="Background" Value="#FF19202A" />
+            <Setter Property="BorderBrush" Value="#5564748B" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="MaxDropDownHeight" Value="220" />
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Padding" Value="8,6" />
+                        <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+                        <Setter Property="Background" Value="#FF19202A" />
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="Margin" Value="1,8,0,6" />
+            <Setter Property="FontSize" Value="8.5" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="#FFB8C4D2" />
+        </Style>
+    </Application.Resources>
+</Application>

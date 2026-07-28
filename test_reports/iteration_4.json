@@ -1,0 +1,45 @@
+{
+  "summary": "CLI-only WPF review completed. Compilation reached the expected Isley.dll output before the known Linux-only MSB3030 VoiceServer.exe copy error. All 7 pre-existing pytest regressions, overlay lint, five Node contract suites, extracted index.html script parsing, and four requested .NET verifiers passed. Added 10 focused regression contracts; 9 pass and 1 exposes a functional tile-retry defect. Static review confirmed the 108-command private-server action, faithful relay-connect extraction, fuzzy-score boundaries, voice backoff/reset, crash handlers/retention, schema write, virtual-screen clamping, and documentation link. Windows-only runtime behavior remains unexecuted.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "BurntHud/Map/index.html — high-resolution tile error handler",
+        "issue": "Failed tiles are recorded with attempts/backoff but no timer schedules updateHighResolutionTiles after 4s/8s. A retry happens only if some unrelated zoom/style/dataset update later calls the renderer, so a stationary view can retain a silent gap indefinitely despite the retry claim. Reproduced by focused source-contract pytest.",
+        "priority": "HIGH"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/tests/test_private_server_improvements.py",
+    "/app/tests/test_release_signing_and_species_retirement.py",
+    "/app/test_reports/pytest/iteration_4_results.xml"
+  ],
+  "action_items": [
+    "In each failed tile's error path, schedule a bounded retry that calls updateHighResolutionTiles after the current 4000*attempts delay (and prevent stale/duplicate timers as needed); then rerun iteration_4 pytest and overlay shell checks.",
+    "Validate clipboard connect, Steam/device authorization, voice reconnect timing, crash-file emission/pruning, and secondary-monitor restore on Windows because WPF runtime execution is unavailable in this Linux environment."
+  ],
+  "critical_code_review_comments": [
+    "The tile backoff state controls eligibility but not execution: without setTimeout/request scheduling, elapsed backoff alone cannot cause a removed image to be recreated.",
+    "ConnectPrivateServerFromClipboardAsync reports success when state is connecting/signing-in as designed, but true end-to-end authorization and final live/error transitions require a Windows test with a relay and Steam flow."
+  ],
+  "updated_files": [
+    "/app/tests/test_private_server_improvements.py",
+    "/app/test_reports/pytest/iteration_4_results.xml",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "success_rate": {
+    "backend": "94% (16/17 pytest checks; all requested Node/lint/.NET verifier commands passed; compile reached Isley.dll)",
+    "frontend": "N/A — desktop WPF runtime not executable on Linux"
+  },
+  "seed_data_creation": "None",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Desktop CLI-only repository; do not start web services/browser. One focused test intentionally fails until the map tile error handler schedules its own retry. The build's final MSB3030 missing Linux apphost Isley.VoiceServer.exe is the explicitly accepted benign error; the Isley.dll compile line was emitted. Existing 7-test suite is fully green. Runtime Windows behavior was not tested.",
+  "rca_of_the_issue": "On tile error, index.html increments failedGatewayTiles and removes the SVG image. updateHighResolutionTiles correctly refuses recreation until Date.now()-failure.at reaches 4000*attempts, but nothing invokes that function when the interval expires. Only setTerrainDataset or a layer style mutation invokes it, so retry is event-driven by unrelated activity rather than automatic. Reproduction: pytest /app/tests/test_private_server_improvements.py::test_failed_tiles_schedule_an_automatic_retry_after_error."
+}

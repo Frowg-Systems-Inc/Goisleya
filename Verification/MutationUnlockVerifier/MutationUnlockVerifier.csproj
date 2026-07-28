@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\MutationPlannerLogic.cs" Link="MutationPlannerLogic.cs" />
+    <Compile Include="..\..\BurntHud\MutationUnlockLogic.cs" Link="MutationUnlockLogic.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,57 @@
+{
+  "summary": "CLI review completed for species-parser retirement and Azure Trusted Signing wiring. Retired identifiers are absent after refreshing the ignored build output; the live species bridge, all five overlay/tooling commands, controller parse, PowerShell parse, six requested .NET verifiers, workflow YAML structure/permissions/order, package Trusted Signing route, and six-secret runbook checks passed. The new workflow has two release-blocking GitHub Actions defects: direct secret use in step if conditions and step-level signing variables that shadow the prepared GITHUB_ENV values.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": ".github/workflows/release-package.yml — Log in to Azure / Prepare Azure Trusted Signing client",
+        "issue": "Both steps use secrets.AZURE_TRUSTED_SIGNING_ACCOUNT directly in if. GitHub's official Actions documentation states secrets cannot be directly referenced in if conditionals; map the secret to a job-level env value and gate on env.AZURE_TRUSTED_SIGNING_ACCOUNT instead.",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": ".github/workflows/release-package.yml — Package Windows archives",
+        "issue": "The package step explicitly sets ISLEY_CODE_SIGN_DLIB and ISLEY_CODE_SIGN_METADATA from repository secrets. Step-level env has higher precedence than values written by the prepare step to GITHUB_ENV, so the generated dlib/metadata paths are replaced (normally with empty values) and Protect-IsleyAuthenticode silently takes the unsigned path.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "docs/AZURE_TRUSTED_SIGNING.md",
+        "issue": "The runbook says individual developers are eligible without documenting the current geographic availability limitation; Microsoft currently documents individual validation as available only in the USA and Canada. Add an eligibility/region caveat to prevent a provisioning dead end."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/tests/test_release_signing_and_species_retirement.py",
+    "/app/test_reports/pytest/iteration_2_results.xml"
+  ],
+  "action_items": [
+    "Map AZURE_TRUSTED_SIGNING_ACCOUNT into jobs.package.env and change both signing-step gates to if: ${{ env.AZURE_TRUSTED_SIGNING_ACCOUNT != '' }}.",
+    "Remove the package step's ISLEY_CODE_SIGN_DLIB and ISLEY_CODE_SIGN_METADATA overrides, or restructure fallback handling so values exported by Prepare Azure Trusted Signing client are not shadowed.",
+    "Re-run the regression pytest and all overlay checks after fixing the workflow; specifically require both currently failing workflow tests to pass.",
+    "Add the current individual identity-validation geography limitation to the provisioning runbook."
+  ],
+  "critical_code_review_comments": [
+    "The workflow looks structurally correct under a generic YAML parser but is not semantically valid GitHub Actions because secrets are forbidden directly in if; CI workflow review needs an Actions-aware validation step.",
+    "Writing values to GITHUB_ENV is ineffective when a later step redeclares the same names in step env. This causes a dangerous silent unsigned-release fallback rather than a signing failure.",
+    "Pin Microsoft.Trusted.Signing.Client to a reviewed version instead of installing an unconstrained latest package in the release job for reproducibility and release-chain safety."
+  ],
+  "updated_files": [
+    "/app/tests/test_release_signing_and_species_retirement.py",
+    "/app/test_reports/pytest/iteration_2_results.xml",
+    "/app/test_reports/iteration_2.json"
+  ],
+  "success_rate": {
+    "backend": "80% (8/10 focused pytest checks; all five overlay tools and all six requested .NET verifiers passed)",
+    "frontend": "N/A"
+  },
+  "seed_data_creation": "None",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Desktop CLI-only repo; do not start services/browser. The ignored BurntHud/bin copy initially contained the retired parser chain, but dotnet build refreshed Map/isley-map-controller.js before ending with the known benign Linux MSB3030 missing Isley.VoiceServer.exe artifact; source and current ignored output are now clean. Focused pytest has exactly two failures, both in release-package.yml. Actual Azure signing remains intentionally untested due to missing Azure credentials.",
+  "rca_of_the_issue": "Workflow RCA: GitHub Actions forbids direct secrets references in if conditionals (official guidance: https://docs.github.com/actions/security-guides/using-secrets-in-github-actions). Independently, GitHub env precedence makes step-level env more specific than inherited job/GITHUB_ENV state; Package Windows archives redeclares both generated path variables, replacing the values exported on lines 72-73. As a result the OIDC steps are invalidly gated and, once that is corrected, the signing inputs would still be empty and packaging would silently skip Authenticode signing. Reproduction: run pytest /app/tests/test_release_signing_and_species_retirement.py; test_signing_gate_uses_supported_env_context and test_prepared_signing_paths_are_not_shadowed_on_package_step fail deterministically."
+}

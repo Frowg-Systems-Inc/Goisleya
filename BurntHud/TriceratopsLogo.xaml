@@ -1,0 +1,12 @@
+<UserControl x:Class="Isley.TriceratopsLogo"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             AutomationProperties.Name="Isley red Triceratops battlecry logo"
+             IsHitTestVisible="False"
+             Focusable="False"
+             UseLayoutRounding="True"
+             SnapsToDevicePixels="True">
+    <Image Source="/Isley;component/Assets/Brand/isley-triceratops-app-teeth-clean.png"
+           Stretch="Uniform"
+           RenderOptions.BitmapScalingMode="HighQuality" />
+</UserControl>

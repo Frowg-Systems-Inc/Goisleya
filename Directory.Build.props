@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <Company>Frowg Systems Inc</Company>
+    <Authors>Frowg Systems Inc</Authors>
+    <Copyright>Copyright © Frowg Systems Inc</Copyright>
+    <Product>Isley</Product>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,28 @@
+* text=auto
+
+# Source-contract verifiers compare multiline snippets. Keep source text
+# deterministic on Windows runners while leaving packaged assets untouched.
+*.cs text eol=lf
+*.csproj text eol=lf
+*.xaml text eol=lf
+*.js text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.ps1 text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+
+*.dll binary
+*.exe binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.pdb binary
+*.webp binary
+*.woff2 binary
+*.zip binary

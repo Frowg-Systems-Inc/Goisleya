@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\IsleContentBaseline.cs" Link="IsleContentBaseline.cs" />
+    <Compile Include="..\..\BurntHud\DietCoachLogic.cs" Link="DietCoachLogic.cs" />
+    <Compile Include="..\..\BurntHud\CombatGuideLogic.cs" Link="CombatGuideLogic.cs" />
+    <Compile Include="..\..\BurntHud\FieldGuideLogic.cs" Link="FieldGuideLogic.cs" />
+  </ItemGroup>
+</Project>

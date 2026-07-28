@@ -1,0 +1,79 @@
+<Window x:Class="Isley.AimGuideWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        Topmost="True">
+    <Grid x:Name="GuideRoot" IsHitTestVisible="False">
+        <Viewbox x:Name="GuideViewbox"
+                 Width="220" Height="220"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Center">
+            <Viewbox.RenderTransform>
+                <TranslateTransform x:Name="GuideOffsetTransform" />
+            </Viewbox.RenderTransform>
+            <Canvas Width="220" Height="220">
+                <Canvas x:Name="AttackAreaCanvas" Width="220" Height="220">
+                    <Canvas.RenderTransform>
+                        <ScaleTransform x:Name="AimDepthTransform" CenterX="110" CenterY="110" />
+                    </Canvas.RenderTransform>
+
+                    <!-- Uncertainty remains separate from the user's saved edge. -->
+                    <Ellipse x:Name="OuterUncertaintyArea"
+                             Canvas.Left="25" Canvas.Top="25" Width="170" Height="170"
+                             Stroke="#4838BDF8" StrokeThickness="14"
+                             StrokeDashArray="1,4" />
+                    <Path x:Name="FrontUncertaintyArc" Stroke="#46FFB44A" StrokeThickness="16"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Data="M52,86 C66,36 154,36 168,86" />
+                    <Path x:Name="RearUncertaintyArc" Stroke="#40FF6847" StrokeThickness="16"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Data="M52,134 C66,184 154,184 168,134" />
+                    <Ellipse x:Name="ReticleUncertaintyArea"
+                             Canvas.Left="76" Canvas.Top="76" Width="68" Height="68"
+                             Stroke="#4D38BDF8" StrokeThickness="10"
+                             StrokeDashArray="1,4" />
+
+                    <Ellipse x:Name="OuterArea"
+                             Canvas.Left="25" Canvas.Top="25" Width="170" Height="170"
+                             Stroke="#D438BDF8" StrokeThickness="2"
+                             StrokeDashArray="2,5" />
+                    <Ellipse x:Name="ReticleArea"
+                             Canvas.Left="84" Canvas.Top="84" Width="52" Height="52"
+                             Stroke="#D438BDF8" StrokeThickness="2"
+                             StrokeDashArray="2,4" />
+                    <Path x:Name="FrontArc" Stroke="#F2FFB44A" StrokeThickness="5"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Data="M52,86 C66,36 154,36 168,86" />
+                    <Path x:Name="RearArc" Stroke="#D9FF6847" StrokeThickness="5"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Data="M52,134 C66,184 154,184 168,134" />
+                </Canvas>
+
+                <Canvas x:Name="CenterCue" Width="220" Height="220">
+                    <Ellipse Canvas.Left="99" Canvas.Top="99" Width="22" Height="22"
+                             Fill="#90070B10" Stroke="#FFF8FAFC" StrokeThickness="2" />
+                    <Ellipse Canvas.Left="107" Canvas.Top="107" Width="6" Height="6"
+                             Fill="#FF38BDF8" />
+                    <Line X1="110" Y1="82" X2="110" Y2="98" Stroke="#FFF8FAFC" StrokeThickness="2" />
+                    <Line X1="110" Y1="122" X2="110" Y2="138" Stroke="#FFF8FAFC" StrokeThickness="2" />
+                    <Line X1="82" Y1="110" X2="98" Y2="110" Stroke="#FFF8FAFC" StrokeThickness="2" />
+                    <Line X1="122" Y1="110" X2="138" Y2="110" Stroke="#FFF8FAFC" StrokeThickness="2" />
+                </Canvas>
+
+                <Border x:Name="GuideLabelBorder"
+                        Canvas.Left="8" Canvas.Top="198" Width="204" Height="18"
+                        Background="#C6070B10" CornerRadius="7">
+                    <TextBlock x:Name="GuideLabel" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Margin="5,0" FontSize="5.8" FontWeight="Bold" Foreground="#FFF8FAFC"
+                               TextTrimming="CharacterEllipsis"
+                               Text="ALLOSAURUS · PRIMARY · ADULT · NORMAL · UNTESTED" />
+                </Border>
+            </Canvas>
+        </Viewbox>
+    </Grid>
+</Window>

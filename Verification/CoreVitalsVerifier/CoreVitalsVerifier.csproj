@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\SurvivalAssistantLogic.cs" Link="SurvivalAssistantLogic.cs" />
+    <Compile Include="..\..\BurntHud\CoreVitalsLogic.cs" Link="CoreVitalsLogic.cs" />
+    <Compile Include="..\..\BurntHud\WoundCheckLogic.cs" Link="WoundCheckLogic.cs" />
+    <Compile Include="..\..\BurntHud\PlayerSnapshotLogic.cs" Link="PlayerSnapshotLogic.cs" />
+    <Compile Include="..\..\BurntHud\VitalsTrendLogic.cs" Link="VitalsTrendLogic.cs" />
+    <Compile Include="..\..\BurntHud\DockVitalsLogic.cs" Link="DockVitalsLogic.cs" />
+    <Compile Include="..\..\BurntHud\VisibleHudSensorLogic.cs" Link="VisibleHudSensorLogic.cs" />
+    <Compile Include="..\..\BurntHud\UniversalCoordinateLogic.cs" Link="UniversalCoordinateLogic.cs" />
+    <Compile Include="..\..\BurntHud\VisibleHudTextLogic.cs" Link="VisibleHudTextLogic.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

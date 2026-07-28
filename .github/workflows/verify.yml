@@ -1,0 +1,71 @@
+name: Verify Isley
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-isley-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  overlay-scripts:
+    name: Lint and contract-check overlay scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out Isley
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Install lint tooling
+        run: yarn install --frozen-lockfile
+
+      - name: ESLint overlay scripts
+        run: yarn lint:overlay
+
+      - name: Overlay script syntax and contracts
+        run: node scripts/verify-overlay-scripts.cjs
+
+      - name: Map controller contracts
+        run: node scripts/verify-controller.cjs
+
+      - name: Voice crypto contracts
+        run: node scripts/verify-voice-crypto.cjs
+
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - name: Check out Isley
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: download-site/package-lock.json
+
+      - name: Verify the complete product
+        shell: pwsh
+        run: .\scripts\verify-all.ps1

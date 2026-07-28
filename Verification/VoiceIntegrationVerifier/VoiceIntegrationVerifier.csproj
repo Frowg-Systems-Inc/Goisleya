@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Isley.VoiceServer\Isley.VoiceServer.csproj"
+                      ReferenceOutputAssembly="false" />
+    <Compile Include="..\..\BurntHud\VoiceIntegrationLogic.cs" Link="VoiceIntegrationLogic.cs" />
+    <Compile Include="..\..\BurntHud\VoiceInviteLogic.cs" Link="VoiceInviteLogic.cs" />
+    <Compile Include="..\..\BurntHud\VoiceProximityRoomLogic.cs" Link="VoiceProximityRoomLogic.cs" />
+    <Compile Include="..\..\BurntHud\VoiceRelayLogic.cs" Link="VoiceRelayLogic.cs" />
+    <Compile Include="..\..\BurntHud\VoiceRouteOfferLogic.cs" Link="VoiceRouteOfferLogic.cs" />
+    <Compile Include="..\..\BurntHud\VoiceServerReadinessClient.cs" Link="VoiceServerReadinessClient.cs" />
+  </ItemGroup>
+</Project>

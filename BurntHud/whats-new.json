@@ -1,0 +1,5 @@
+{
+  "version": "1.3.6",
+  "title": "What's new in Isley 1.3.6",
+  "body": "• LOCATION DATA STALE clears after a fresh Asset Location / provider acquire\n• Publisher metadata and safer updater launch for Defender heuristics\n• Tools→MORE update check, overlay topmost, paste-coords routing, solid zones, resize fix"
+}

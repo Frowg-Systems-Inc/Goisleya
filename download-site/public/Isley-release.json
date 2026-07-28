@@ -1,0 +1,11 @@
+{
+    "manifestVersion": 1,
+    "channel": "stable",
+    "version": "1.3.6",
+    "publishedAt": "2026-07-26T18:59:32.689500+00:00",
+    "downloadUrl": "https://isley-download.gmith.chatgpt.site/Isley-Windows-x64.zip",
+    "sha256": "2E335F99A7FF4BC0D0D20EDE34F8CC271F724502AB885D5A8365EB3DC7D23EC9",
+    "bytes": 8963333,
+    "notes": "LOCATION DATA freshness fix, Defender false-positive mitigations, Tools\u2192MORE updates, overlay topmost, paste-coords routing, solid zones, and resize fix.",
+    "required": false
+}

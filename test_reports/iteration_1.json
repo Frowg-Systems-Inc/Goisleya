@@ -1,0 +1,40 @@
+{
+  "summary": "CLI/tooling review completed. Clean install, ESLint, overlay syntax checks, controller contracts, voice-crypto contracts, YAML parsing, referenced-file checks, and expected Linux WPF build artifact all passed. Syntax mutations were caught by both ESLint and the verifier. One contract-test weakness was reproduced: changing only the production ROOM ENCRYPTION UNAVAILABLE occurrence does not fail because the same token remains in a second branch.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "scripts/verify-overlay-scripts.cjs / BurntHud/Voice/voice.js",
+        "issue": "Contract check uses source-wide String.includes. voice.js contains ROOM ENCRYPTION UNAVAILABLE twice; changing one production error branch leaves the duplicate token and the verifier exits 0, so a branch-specific regression is not caught."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/scripts/verify-overlay-scripts.cjs",
+    "/app/eslint.config.mjs",
+    "/app/.github/workflows/verify.yml"
+  ],
+  "action_items": [
+    "Strengthen the sealed-signaling contract to verify each required failure branch or the expected occurrence count/context, rather than accepting one source-wide token occurrence."
+  ],
+  "critical_code_review_comments": [
+    "Token-presence contracts are useful smoke tests but can false-pass when a duplicated literal survives elsewhere; bind this security-sensitive assertion to the capability-guard branch and deriveSignalKey failure branch (or assert both occurrences and surrounding structure)."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_1.json"
+  ],
+  "success_rate": {
+    "backend": "92%",
+    "frontend": "N/A"
+  },
+  "seed_data_creation": "None",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "No services/browser are involved. Final tree checks are green. Build emits expected Linux MSB3030 after producing /app/BurntHud/bin/Release/net8.0-windows10.0.19041.0/Isley.dll. Regression mutations were restored byte-for-byte to the pre-test working copy.",
+  "rca_of_the_issue": "verify-overlay-scripts.cjs checks voice.includes(\"'ROOM ENCRYPTION UNAVAILABLE'\"). The literal occurs at both the missing-crypto capability guard and deriveSignalKey catch. A one-occurrence production mutation leaves the other occurrence, satisfying includes and producing a false pass. Reproduction: replace only the first occurrence, observe token count 2 to 1, then run node scripts/verify-overlay-scripts.cjs; it exits 0. Replacing both occurrences correctly exits non-zero and names the missing contract."
+}

@@ -1,0 +1,97 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>Isley</AssemblyName>
+    <RootNamespace>Isley</RootNamespace>
+    <Title>Isley</Title>
+    <AssemblyTitle>Isley</AssemblyTitle>
+    <Description>Independent external companion overlay for The Isle with optional Live Map mode, built-in push-to-talk proximity voice, universal player tools, and opt-in public community-server watch.</Description>
+    <Version>1.3.6</Version>
+    <AssemblyVersion>1.3.6.0</AssemblyVersion>
+    <FileVersion>1.3.6.0</FileVersion>
+    <InformationalVersion>1.3.6</InformationalVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Brand\Isley-teeth-clean.ico</ApplicationIcon>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.codex-build\**;**\.codex-build\**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\Brand\isley-triceratops-app-teeth-clean.png" />
+    <Content Include="Map\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Voice\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="whats-new.json" CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="..\Isley.VoiceServer\Isley.VoiceServer.csproj"
+                      ReferenceOutputAssembly="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
+    <ProjectReference Include="..\Isley.Updater\Isley.Updater.csproj"
+                      ReferenceOutputAssembly="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained" />
+    <ProjectReference Include="..\Isley.Telemetry\Isley.Telemetry.csproj" />
+  </ItemGroup>
+  <PropertyGroup>
+    <_IsleyVoiceServerOutput>..\Isley.VoiceServer\bin\$(Configuration)\net8.0\</_IsleyVoiceServerOutput>
+    <_IsleyUpdaterOutput>..\Isley.Updater\bin\$(Configuration)\net8.0\</_IsleyUpdaterOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <_IsleyVoiceServerFileNames Include="appsettings.json;
+                                         Isley.VoiceServer.deps.json;
+                                         Isley.VoiceServer.dll;
+                                         Isley.VoiceServer.exe;
+                                         Isley.VoiceServer.runtimeconfig.json" />
+  </ItemGroup>
+  <Target Name="CopyIsleyVoiceServer" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)VoiceServer" />
+    <ItemGroup>
+      <_IsleyVoiceServerFiles
+        Include="@(_IsleyVoiceServerFileNames->'$(_IsleyVoiceServerOutput)%(Identity)')" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(_IsleyVoiceServerOutput)Isley.VoiceServer.dll')"
+           Text="Bundled Isley VoiceServer output was not found at $(_IsleyVoiceServerOutput)." />
+    <Copy SourceFiles="@(_IsleyVoiceServerFiles)"
+          DestinationFiles="@(_IsleyVoiceServerFiles->'$(OutDir)VoiceServer\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyIsleyUpdater" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)Updater" />
+    <ItemGroup>
+      <_IsleyUpdaterFiles Include="$(_IsleyUpdaterOutput)*.*"
+                          Exclude="$(_IsleyUpdaterOutput)*.pdb" />
+    </ItemGroup>
+    <Error Condition="'@(_IsleyUpdaterFiles)' == ''"
+           Text="Bundled Isley Updater output was not found at $(_IsleyUpdaterOutput)." />
+    <Copy SourceFiles="@(_IsleyUpdaterFiles)"
+          DestinationFiles="@(_IsleyUpdaterFiles->'$(OutDir)Updater\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishIsleyCompanions" AfterTargets="Publish">
+    <RemoveDir Directories="$(PublishDir)VoiceServer;$(PublishDir)Updater" />
+    <ItemGroup>
+      <_PublishedVoiceServerFiles
+        Include="@(_IsleyVoiceServerFileNames->'$(_IsleyVoiceServerOutput)%(Identity)')" />
+      <_PublishedUpdaterFiles Include="$(_IsleyUpdaterOutput)*.*"
+                              Exclude="$(_IsleyUpdaterOutput)*.pdb" />
+      <_FlattenedCompanionFiles
+        Include="$(PublishDir)Isley.VoiceServer.*;
+                 $(PublishDir)Isley.Updater.*;
+                 $(PublishDir)appsettings.json" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(_IsleyVoiceServerOutput)Isley.VoiceServer.dll')"
+           Text="Published Isley VoiceServer files were not found at $(_IsleyVoiceServerOutput)." />
+    <Error Condition="'@(_PublishedUpdaterFiles)' == ''"
+           Text="Published Isley Updater files were not found at $(_IsleyUpdaterOutput)." />
+    <Delete Files="@(_FlattenedCompanionFiles)" />
+    <Copy SourceFiles="@(_PublishedVoiceServerFiles)"
+          DestinationFiles="@(_PublishedVoiceServerFiles->'$(PublishDir)VoiceServer\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_PublishedUpdaterFiles)"
+          DestinationFiles="@(_PublishedUpdaterFiles->'$(PublishDir)Updater\%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>

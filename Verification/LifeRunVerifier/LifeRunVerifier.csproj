@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\LifeRunLogic.cs" Link="LifeRunLogic.cs" />
+    <Compile Include="..\..\BurntHud\LifeRunHistoryLogic.cs" Link="LifeRunHistoryLogic.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,55 @@
+{
+  "sampledAt": "2026-07-23T20:15:30.125Z",
+  "source": "my-authorized-server-plugin",
+  "capabilities": {
+    "position": true,
+    "authoritativeDirection": true,
+    "health": true,
+    "growth": true,
+    "stamina": true,
+    "food": true,
+    "water": true,
+    "conditions": true,
+    "aiAnimals": true
+  },
+  "entities": [
+    {
+      "entityId": "player-session-42",
+      "steamId": "76561198000000001",
+      "displayName": "Pack Lead",
+      "kind": "Player",
+      "speciesId": "triceratops",
+      "x": 123456.75,
+      "y": -234567.5,
+      "z": 812.25,
+      "yaw": 127.5,
+      "directionQuality": "ServerAuthoritative",
+      "healthPercent": 94.0,
+      "growthPercent": 82.0,
+      "staminaPercent": 73.0,
+      "foodPercent": 64.0,
+      "waterPercent": 55.0,
+      "conditions": [
+        "vomit-sickness"
+      ],
+      "shareScope": "Friends",
+      "allowedViewerSteamIds": [
+        "76561198000000002"
+      ]
+    },
+    {
+      "entityId": "ai-session-91",
+      "displayName": "AI animal",
+      "kind": "AiAnimal",
+      "speciesId": "deer",
+      "x": 123800.0,
+      "y": -234100.0,
+      "z": 810.0,
+      "yaw": 275.0,
+      "directionQuality": "ServerAuthoritative",
+      "conditions": [],
+      "shareScope": "Server",
+      "allowedViewerSteamIds": []
+    }
+  ]
+}

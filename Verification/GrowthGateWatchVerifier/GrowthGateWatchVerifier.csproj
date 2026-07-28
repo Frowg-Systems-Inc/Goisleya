@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\DietCoachLogic.cs" Link="DietCoachLogic.cs" />
+    <Compile Include="..\..\BurntHud\LiveSpeciesBridgeLogic.cs" Link="LiveSpeciesBridgeLogic.cs" />
+    <Compile Include="..\..\BurntHud\GrowthGateWatchLogic.cs" Link="GrowthGateWatchLogic.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+</Project>
