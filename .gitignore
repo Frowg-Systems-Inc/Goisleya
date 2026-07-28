@@ -39,3 +39,7 @@ download-site/.wrangler/
 *.env
 credentials.json
 .credentials
+
+# Test run outputs
+test_reports/
+.emergent/
