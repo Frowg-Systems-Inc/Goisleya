@@ -5,6 +5,14 @@ namespace Isley.Telemetry;
 public static class TelemetryProtocol
 {
     public const int Version = 1;
+
+    /// <summary>
+    /// Relay-to-viewer stream format version. Version 1 is full snapshots only.
+    /// Version 2 adds keyframe-tagged snapshots and delta frames. Viewers must
+    /// reject stream versions greater than the newest one they understand and
+    /// fall back to a waiting/update-required state instead of mis-parsing.
+    /// </summary>
+    public const int ViewerStreamVersion = 2;
     public const int MaximumEntities = 512;
     public const int MaximumConditionsPerEntity = 16;
     public const int MaximumFrameBytes = 512 * 1024;

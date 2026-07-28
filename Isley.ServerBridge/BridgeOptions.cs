@@ -24,6 +24,9 @@ public sealed class BridgeOptions
         string.Equals(SourceMode, "Rcon", StringComparison.OrdinalIgnoreCase)
         || string.Equals(SourceMode, "Both", StringComparison.OrdinalIgnoreCase);
 
+    internal bool PluginCapable =>
+        PluginEnabled && PluginKey.Length >= 32;
+
     public static bool IsValid(BridgeOptions value)
     {
         var sourceValid = value.SourceMode is "Rcon" or "Plugin" or "Both"

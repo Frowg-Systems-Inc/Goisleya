@@ -48,16 +48,38 @@ app.MapHealthChecks("/health/ready", new()
 {
     Predicate = registration => registration.Name == "bridge-ready"
 });
-object BridgeStatusPayload(BridgeRuntimeStatus status) => new
+object BridgeStatusPayload(
+    BridgeRuntimeStatus status,
+    BridgeOptions bridge,
+    RconOptions rcon) => new
 {
     service = "Isley Server Bridge",
     protocolVersion = TelemetryProtocol.Version,
     status = status.Snapshot(),
+    source = new
+    {
+        mode = bridge.SourceMode,
+        rconEnabled = bridge.RconEnabled,
+        rconConfigured = rcon.Configured,
+        pluginEnabled = bridge.PluginEnabled,
+        pluginCapable = bridge.PluginCapable,
+        allowRemotePlugin = bridge.AllowRemotePlugin
+    },
+    relayConfigured = bridge.RelayConfigured,
+    lastSuccessfulPublishAt = status.LastSuccessfulPublishAt,
     safety = "RCON stays operator-side; relay never receives the RCON password.",
     pluginIngress = "loopback authenticated"
 };
-app.MapGet("/", (BridgeRuntimeStatus status) => TypedResults.Ok(BridgeStatusPayload(status)));
-app.MapGet("/status", (BridgeRuntimeStatus status) => TypedResults.Ok(BridgeStatusPayload(status)));
+app.MapGet("/", (
+    BridgeRuntimeStatus status,
+    IOptions<BridgeOptions> bridge,
+    IOptions<RconOptions> rcon) =>
+    TypedResults.Ok(BridgeStatusPayload(status, bridge.Value, rcon.Value)));
+app.MapGet("/status", (
+    BridgeRuntimeStatus status,
+    IOptions<BridgeOptions> bridge,
+    IOptions<RconOptions> rcon) =>
+    TypedResults.Ok(BridgeStatusPayload(status, bridge.Value, rcon.Value)));
 app.MapGet("/status/ui", (HttpContext context, BridgeRuntimeStatus status, IOptions<BridgeOptions> bridgeOptions) =>
 {
     if (context.Connection.RemoteIpAddress is { } remote && !IPAddress.IsLoopback(remote))
@@ -78,7 +100,8 @@ app.MapGet("/status/ui", (HttpContext context, BridgeRuntimeStatus status, IOpti
         <h1>Isley Server Bridge · Status</h1>
         <p>Loopback-only operator view. Secrets are never included.</p>
         <pre>{{snapshotJson}}</pre>
-        <p>Source mode: <code>{{sourceMode}}</code> · Plugin enabled: <code>{{options.PluginEnabled}}</code></p>
+        <p>Source mode: <code>{{sourceMode}}</code> · Plugin enabled: <code>{{options.PluginEnabled}}</code> · Plugin capable: <code>{{options.PluginCapable}}</code></p>
+        <p>Last successful relay publish: <code>{{status.LastSuccessfulPublishAt?.ToString("O") ?? "never"}}</code></p>
         <p class="warn">RCON cannot supply stationary facing, sickness/conditions, or AI animals. See RCON_TO_PLUGIN.md for the authorized plugin path.</p>
         <p><a href="/status">JSON status</a> · <a href="/">JSON root</a> · <a href="/health/ready">ready</a></p>
         </body></html>

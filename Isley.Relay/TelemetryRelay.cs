@@ -73,6 +73,21 @@ internal sealed class TelemetryFrameStore(IOptions<RelayOptions> options)
         return false;
     }
 
+    internal int CountFresh()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var freshness = TimeSpan.FromSeconds(_options.FrameFreshnessSeconds);
+        var count = 0;
+        foreach (var stored in _frames.Values)
+        {
+            if (now - stored.ReceivedAt <= freshness)
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
     internal IReadOnlyList<object> ListForViewer(string steamId)
     {
         var now = DateTimeOffset.UtcNow;
@@ -120,9 +135,14 @@ internal sealed record StoredFrame(
 internal sealed partial class TelemetryBroker(
     TelemetryFrameStore frames,
     IFriendResolver friends,
+    RelayMetrics metrics,
+    IOptions<RelayOptions> options,
     ILogger<TelemetryBroker> logger)
 {
     private readonly ConcurrentDictionary<Guid, ViewerConnection> _connections = new();
+    private readonly RelayOptions _options = options.Value;
+
+    internal int ActiveViewerCount => _connections.Count;
 
     internal async Task RunViewerAsync(
         string serverId,
@@ -141,6 +161,7 @@ internal sealed partial class TelemetryBroker(
 
         var connection = new ViewerConnection(Guid.NewGuid(), serverId, steamId, socket);
         _connections[connection.Id] = connection;
+        metrics.ViewerConnected();
         var sendTask = connection.RunSendLoopAsync(
             (frame, token) => SendSnapshotAsync(connection, frame, token),
             cancellationToken);
@@ -176,6 +197,13 @@ internal sealed partial class TelemetryBroker(
                         "Client messages are limited to small control frames.",
                         CancellationToken.None);
                     return;
+                }
+                if (result.MessageType == WebSocketMessageType.Text && result.Count > 0)
+                {
+                    await TryHandleHelloAsync(
+                        connection,
+                        buffer.AsMemory(0, result.Count),
+                        cancellationToken);
                 }
             }
         }
@@ -215,6 +243,7 @@ internal sealed partial class TelemetryBroker(
         TelemetryFrame frame,
         CancellationToken cancellationToken)
     {
+        metrics.FrameRelayed();
         foreach (var connection in _connections.Values.Where(connection => string.Equals(
                 connection.ServerId,
                 frame.ServerId,
@@ -223,6 +252,50 @@ internal sealed partial class TelemetryBroker(
             connection.TryPublish(frame);
         }
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Optional stream-version negotiation. A viewer may send
+    /// {"type":"hello","maxStreamVersion":2} on a small text frame; the relay
+    /// answers with the negotiated version and starts delta delivery. Malformed
+    /// control frames are ignored — they never tear down a viewer stream.
+    /// </summary>
+    private async Task TryHandleHelloAsync(
+        ViewerConnection connection,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken cancellationToken)
+    {
+        int requested;
+        try
+        {
+            using var document = JsonDocument.Parse(payload);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("type", out var typeElement)
+                || typeElement.GetString() is not "hello")
+            {
+                return;
+            }
+            if (!root.TryGetProperty("maxStreamVersion", out var versionElement)
+                || !versionElement.TryGetInt32(out requested))
+            {
+                requested = 1;
+            }
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        connection.NegotiateStreamVersion(requested, TelemetryProtocol.ViewerStreamVersion);
+        await connection.SendAsync(new
+        {
+            type = "hello",
+            streamVersion = connection.MaxStreamVersion,
+            keyframeIntervalFrames = _options.ViewerKeyframeIntervalFrames,
+            deltaEncoding = connection.MaxStreamVersion >= 2
+                            && _options.ViewerDeltaEncodingEnabled
+        }, cancellationToken);
     }
 
     private async Task SendSnapshotAsync(
@@ -242,7 +315,41 @@ internal sealed partial class TelemetryBroker(
                 frame.ServerId,
                 StringComparison.Ordinal)),
             cancellationToken);
+
+        // Stream version 1 (default): full snapshots in the original shape.
+        // Stream version 2 (negotiated): deltas against the last sent snapshot
+        // with periodic keyframe snapshots as the resync anchor.
+        if (connection.MaxStreamVersion >= 2)
+        {
+            var deltasEnabled = _options.ViewerDeltaEncodingEnabled;
+            if (deltasEnabled
+                && connection.LastSent is { } previous
+                && connection.FramesSinceKeyframe < _options.ViewerKeyframeIntervalFrames
+                && ViewerTelemetryDeltaBuilder.TryCreate(previous, snapshot, out var delta))
+            {
+                await connection.SendAsync(new
+                {
+                    type = "delta",
+                    streamVersion = TelemetryProtocol.ViewerStreamVersion,
+                    delta
+                }, cancellationToken);
+                connection.RecordSent(snapshot, keyframe: false);
+                return;
+            }
+
+            await connection.SendAsync(new
+            {
+                type = "snapshot",
+                streamVersion = TelemetryProtocol.ViewerStreamVersion,
+                keyframe = true,
+                snapshot
+            }, cancellationToken);
+            connection.RecordSent(snapshot, keyframe: true);
+            return;
+        }
+
         await connection.SendAsync(new { type = "snapshot", snapshot }, cancellationToken);
+        connection.RecordSent(snapshot, keyframe: true);
     }
 
     private async Task<ViewerTelemetrySnapshot> CreateViewerSnapshotAsync(
@@ -369,6 +476,7 @@ internal sealed partial class TelemetryBroker(
         WebSocket socket)
     {
         private readonly SemaphoreSlim _sendGate = new(1, 1);
+        private readonly object _streamGate = new();
         private readonly Channel<TelemetryFrame> _latestFrames =
             Channel.CreateBounded<TelemetryFrame>(new BoundedChannelOptions(1)
             {
@@ -382,6 +490,30 @@ internal sealed partial class TelemetryBroker(
         internal string ServerId { get; } = serverId;
         internal string SteamId { get; } = steamId;
         internal WebSocket Socket { get; } = socket;
+        internal int MaxStreamVersion { get; private set; } = 1;
+        internal ViewerTelemetrySnapshot? LastSent { get; private set; }
+        internal int FramesSinceKeyframe { get; private set; }
+
+        internal void NegotiateStreamVersion(int requested, int newestSupported)
+        {
+            lock (_streamGate)
+            {
+                MaxStreamVersion = Math.Clamp(requested, 1, newestSupported);
+                // The next send must be a keyframe so the viewer has a base
+                // state for any following deltas.
+                LastSent = null;
+                FramesSinceKeyframe = 0;
+            }
+        }
+
+        internal void RecordSent(ViewerTelemetrySnapshot snapshot, bool keyframe)
+        {
+            lock (_streamGate)
+            {
+                LastSent = snapshot;
+                FramesSinceKeyframe = keyframe ? 0 : FramesSinceKeyframe + 1;
+            }
+        }
 
         internal bool TryPublish(TelemetryFrame frame) =>
             _latestFrames.Writer.TryWrite(frame);

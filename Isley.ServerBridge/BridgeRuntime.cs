@@ -138,6 +138,17 @@ internal sealed class BridgeRuntimeStatus
         }
     }
 
+    internal DateTimeOffset? LastSuccessfulPublishAt
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _lastPublishedAt;
+            }
+        }
+    }
+
     internal void RelayError(string detail)
     {
         lock (_gate)
@@ -158,6 +169,7 @@ internal sealed class BridgeRuntimeStatus
                 detail = _detail,
                 lastSampledAt = _lastSampledAt,
                 lastPublishedAt = _lastPublishedAt,
+                lastSuccessfulPublishAt = _lastPublishedAt,
                 lastSequence = _lastSequence,
                 lastEntityCount = _lastEntityCount
             };

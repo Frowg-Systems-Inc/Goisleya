@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.WebSockets;
 using System.Security.Claims;
 using System.Text.Json;
@@ -59,6 +60,7 @@ builder.Services.AddSingleton<BridgeReplayGuard>();
 builder.Services.AddSingleton<BridgeSignatureVerifier>();
 builder.Services.AddSingleton<PrivacyStore>();
 builder.Services.AddSingleton<TelemetryFrameStore>();
+builder.Services.AddSingleton<RelayMetrics>();
 builder.Services.AddSingleton<TelemetryBroker>();
 builder.Services.AddSingleton<IFriendResolver>(provider =>
     provider.GetRequiredService<SteamFriendResolver>());
@@ -66,6 +68,13 @@ builder.Services.AddSingleton<SteamFriendResolver>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (context, _) =>
+    {
+        context.HttpContext.RequestServices
+            .GetService<RelayMetrics>()
+            ?.RateLimitRejected();
+        return ValueTask.CompletedTask;
+    };
     options.AddFixedWindowLimiter("device", limiter =>
     {
         limiter.PermitLimit = 20;
@@ -98,6 +107,27 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = registration => registration.Name == "relay-ready"
 });
+app.MapGet("/metrics", (
+    HttpContext context,
+    RelayMetrics metrics,
+    TelemetryFrameStore frames,
+    TelemetryBroker broker,
+    IOptions<RelayOptions> relayOptions) =>
+{
+    // Loopback-only by default, matching the bridge status UI posture; an
+    // operator may widen it explicitly. The payload is aggregate counters
+    // only — no bridge server IDs, Steam IDs, or entity data.
+    if (!relayOptions.Value.MetricsPubliclyVisible
+        && context.Connection.RemoteIpAddress is { } remote
+        && !IPAddress.IsLoopback(remote))
+    {
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    }
+
+    context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    return Results.Json(metrics.Snapshot(frames.CountFresh(), broker.ActiveViewerCount));
+});
 app.MapGet("/", () => TypedResults.Ok(new
 {
     service = "Isley Relay",
@@ -105,6 +135,7 @@ app.MapGet("/", () => TypedResults.Ok(new
     authentication = "Steam OpenID device authorization",
     transport = "HTTPS ingest and authenticated WebSocket delivery",
     privacy = "self plus consented friends and server-authorized entities",
+    metrics = "aggregate counters on loopback-gated /metrics",
     rconExposed = false
 }));
 app.MapGet("/join/{serverId}", (
