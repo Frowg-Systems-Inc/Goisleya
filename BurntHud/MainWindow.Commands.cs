@@ -657,6 +657,9 @@ public partial class MainWindow
             case "steam-friends":
                 OpenMapToolsAtSection(actionId);
                 break;
+            case "tactical-log-export":
+                await ExportTacticalLogAsync();
+                break;
             case "water-crossing":
                 OpenMapToolsAtSection("water-crossing");
                 await StartWaterCrossingMeasurementAsync(resetBanks: !_measurementActive);

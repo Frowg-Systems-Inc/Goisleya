@@ -156,6 +156,6 @@ Check(xaml.Contains("Manual per-life checks", StringComparison.Ordinal)
 var commandStart = source.IndexOf("CommandPaletteActions =", StringComparison.Ordinal);
 var commandEnd = source.IndexOf("private static readonly", commandStart + 1, StringComparison.Ordinal);
 var commandBlock = source[commandStart..commandEnd];
-Check(commandBlock.Split("new(\"").Length - 1 == 124, "Quick Command catalog count failed");
+Check(commandBlock.Split("new(\"").Length - 1 == 125, "Quick Command catalog count failed");
 
 Console.WriteLine("Spawn Plan: PASS (species, cover, scent, water, food, fresh-vital priority, universal fallback, persistence, HUD/Next Move integration, and no permanent map card)");
