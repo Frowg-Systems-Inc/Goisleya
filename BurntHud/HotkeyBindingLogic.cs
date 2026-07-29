@@ -153,6 +153,24 @@ internal static class HotkeyBindingLogic
                 $"ALREADY USED BY {Find(duplicate.ActionId)?.CompactLabel ?? "ISLEY"}");
     }
 
+    internal static HotkeyBinding? FindConflict(
+        HotkeyBinding candidate,
+        IEnumerable<HotkeyBinding> existing)
+    {
+        if (!candidate.Enabled || Find(candidate.ActionId) is null)
+        {
+            return null;
+        }
+
+        return existing.FirstOrDefault(binding =>
+            binding.Enabled
+            && !string.Equals(binding.ActionId, candidate.ActionId, StringComparison.Ordinal)
+            && string.Equals(Signature(binding), Signature(candidate), StringComparison.Ordinal));
+    }
+
+    internal static string ConflictMessage(HotkeyBinding candidate, HotkeyBinding conflict) =>
+        $"{Format(candidate)} ALREADY USED BY {Find(conflict.ActionId)?.CompactLabel ?? "ISLEY"}";
+
     internal static HotkeyBindingValidation ValidateBasic(HotkeyBinding binding)
     {
         if (!binding.Enabled)

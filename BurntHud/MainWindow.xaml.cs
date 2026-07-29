@@ -903,7 +903,11 @@ public partial class MainWindow : Window
         new("map-routes-import", "Import shared route", "Start a route from a pack member's share code on your clipboard", "route share code import paste start map pack receive plan"),
         new("map-nogo-share", "Copy no-go share code", "Copy a share code of your no-go areas to send to your pack", "no-go area share code copy export map pack send zone avoid"),
         new("map-nogo-import", "Import shared no-go areas", "Add no-go areas from a pack member's share code on your clipboard", "no-go area share code import paste add map pack receive zone"),
-        new("map-route-replan", "Toggle route auto-replan", "Re-plan the active route from your position when you stray off it", "route auto replan deviation off course toggle reroute stray")
+        new("map-route-replan", "Toggle route auto-replan", "Re-plan the active route from your position when you stray off it", "route auto replan deviation off course toggle reroute stray"),
+        new("layout-profiles", "Open layout profiles", "Save, apply, and manage named HUD layout configurations", "layout profiles hud save apply restore window size dock visibility surfaces preset workspace"),
+        new("layout-profile-save", "Save current layout profile", "Capture the current dock, window size, and HUD visibility into a named layout profile", "layout profile save capture snapshot current hud window dock visibility surfaces"),
+        new("capture-sound", "Toggle capture sound", "Play or mute the subtle tick when a clipboard position capture succeeds", "clipboard capture sound tick audio feedback player sync coordinates position"),
+        new("diagnostics-export", "Export diagnostics bundle", "Save a support zip with crash logs, redacted settings, and environment info", "diagnostics export support logs crash zip report bug feedback troubleshoot bundle")
     ];
 
     private sealed class PlaceSearchSuggestion
@@ -1222,6 +1226,8 @@ public partial class MainWindow : Window
         public bool PressureCoachPreStreamSeen { get; set; }
         public string WhatsNewVersionSeen { get; set; } = string.Empty;
         public bool PreferBetaUpdates { get; set; }
+        public bool ClipboardCaptureSoundEnabled { get; set; } = true;
+        public List<HudLayoutProfileSettings> HudLayoutProfiles { get; set; } = [];
     }
 
     public MainWindow()
@@ -1683,6 +1689,23 @@ public partial class MainWindow : Window
             index,
             liveGrowthAvailable && _aimGuideGrowthSyncEnabled,
             liveGrowthAvailable ? snapshot.GrowthPercent : 0);
+    }
+
+    private sealed class HudLayoutProfileSettings
+    {
+        public string Name { get; set; } = string.Empty;
+        public bool HudDockMirrored { get; set; }
+        public bool Expanded { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public int HudDetailModeIndex { get; set; }
+        public bool NavigationHudVisible { get; set; } = true;
+        public bool VitalsHudVisible { get; set; } = true;
+        public bool SurvivalHudVisible { get; set; } = true;
+        public bool AlertHudVisible { get; set; } = true;
+        public bool QuickKeysHudVisible { get; set; }
+        public int QuickKeysModeIndex { get; set; }
+        public long SavedAtUnixMs { get; set; }
     }
 
 }

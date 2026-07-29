@@ -23,6 +23,8 @@ namespace Isley;
 
 public partial class MainWindow
 {
+    private string _hotkeyConflictActionId = string.Empty;
+
     private nint WindowMessageHook(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
     {
         if (message == NativeMethods.WmNcHitTest && _overlayLocked)
@@ -110,6 +112,7 @@ public partial class MainWindow
         }
         _hotkeyCaptureActionId = string.Empty;
         _hotkeyCaptureMessage = string.Empty;
+        _hotkeyConflictActionId = string.Empty;
         _hotkeyStudioUiSignature = string.Empty;
     }
 
@@ -229,6 +232,7 @@ public partial class MainWindow
         var signature = string.Join('|',
             _hotkeyCaptureActionId,
             _hotkeyCaptureMessage,
+            _hotkeyConflictActionId,
             string.Join(';', HotkeyBindingLogic.Definitions.Select(definition =>
             {
                 var binding = CurrentHotkeyBinding(definition.Id);
@@ -280,33 +284,44 @@ public partial class MainWindow
             var registered = IsHotkeyRegistered(definition.Id);
             var listening = string.Equals(
                 definition.Id, _hotkeyCaptureActionId, StringComparison.Ordinal);
+            var conflicted = !listening
+                             && string.Equals(
+                                 definition.Id, _hotkeyConflictActionId, StringComparison.Ordinal);
+            var captureLabel = HotkeyBindingLogic.Find(_hotkeyCaptureActionId)?.CompactLabel
+                               ?? "ISLEY";
             var row = new StackPanel { Margin = new Thickness(1, 4, 1, 4) };
             var header = new Grid();
             header.ColumnDefinitions.Add(new ColumnDefinition());
             header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             header.Children.Add(new TextBlock
             {
-                Text = definition.Label,
+                Text = conflicted ? $"⚠ {definition.Label}" : definition.Label,
                 FontSize = 8,
                 FontWeight = FontWeights.Bold,
-                Foreground = (Brush)FindResource("PrimaryTextBrush"),
+                Foreground = conflicted
+                    ? (Brush)FindResource("WarningBrush")
+                    : (Brush)FindResource("PrimaryTextBrush"),
                 TextTrimming = TextTrimming.CharacterEllipsis
             });
             var stateText = new TextBlock
             {
                 Text = listening
                     ? "LISTENING"
-                    : !binding.Enabled
-                        ? "OFF"
-                        : registered ? definition.Required ? "RECOVERY" : "READY" : "IN USE",
+                    : conflicted
+                        ? "CONFLICT"
+                        : !binding.Enabled
+                            ? "OFF"
+                            : registered ? definition.Required ? "RECOVERY" : "READY" : "IN USE",
                 Margin = new Thickness(8, 0, 0, 0),
                 FontSize = 7,
                 FontWeight = FontWeights.Bold,
-                Foreground = !binding.Enabled
-                    ? (Brush)FindResource("SecondaryTextBrush")
-                    : registered || listening
-                        ? (Brush)FindResource("AccentBrush")
-                        : (Brush)FindResource("WarningBrush"),
+                Foreground = conflicted
+                    ? (Brush)FindResource("WarningBrush")
+                    : !binding.Enabled
+                        ? (Brush)FindResource("SecondaryTextBrush")
+                        : registered || listening
+                            ? (Brush)FindResource("AccentBrush")
+                            : (Brush)FindResource("WarningBrush"),
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
             Grid.SetColumn(stateText, 1);
@@ -314,12 +329,18 @@ public partial class MainWindow
             row.Children.Add(header);
             row.Children.Add(new TextBlock
             {
-                Text = listening ? "Press the replacement now" : definition.Description,
+                Text = listening
+                    ? "Press the replacement now"
+                    : conflicted
+                        ? $"Blocks {captureLabel} · pick another chord or rebind this one"
+                        : definition.Description,
                 Margin = new Thickness(0, 2, 0, 0),
                 FontSize = 7,
-                Foreground = registered || listening || !binding.Enabled
-                    ? (Brush)FindResource("SecondaryTextBrush")
-                    : (Brush)FindResource("WarningBrush"),
+                Foreground = conflicted
+                    ? (Brush)FindResource("WarningBrush")
+                    : registered || listening || !binding.Enabled
+                        ? (Brush)FindResource("SecondaryTextBrush")
+                        : (Brush)FindResource("WarningBrush"),
                 TextTrimming = TextTrimming.CharacterEllipsis
             });
 
@@ -373,6 +394,7 @@ public partial class MainWindow
             _hotkeyCaptureMessage = string.Empty;
             Focus();
         }
+        _hotkeyConflictActionId = string.Empty;
         _hotkeyStudioUiSignature = string.Empty;
         UpdateHotkeyStudio(force: true);
         UpdateHotkeyStatus();
@@ -401,6 +423,7 @@ public partial class MainWindow
         }
         _hotkeyCaptureActionId = string.Empty;
         _hotkeyCaptureMessage = "DEFAULT SHORTCUTS RESTORED";
+        _hotkeyConflictActionId = string.Empty;
         _hotkeyStudioUiSignature = string.Empty;
         UpdateHotkeyStudio(force: true);
         UpdateHotkeyStatus();
@@ -418,10 +441,14 @@ public partial class MainWindow
         {
             return false;
         }
+        var conflict = HotkeyBindingLogic.FindConflict(candidate, _hotkeyBindings.Values);
         var validation = HotkeyBindingLogic.ValidateCandidate(candidate, _hotkeyBindings.Values);
         if (!validation.Valid)
         {
-            _hotkeyCaptureMessage = validation.Error;
+            _hotkeyConflictActionId = conflict?.ActionId ?? string.Empty;
+            _hotkeyCaptureMessage = conflict is not null
+                ? $"{HotkeyBindingLogic.ConflictMessage(candidate, conflict)} · BLOCKED"
+                : validation.Error;
             _hotkeyStudioUiSignature = string.Empty;
             UpdateHotkeyStudio(force: true);
             UpdateHotkeyStatus();
@@ -433,6 +460,7 @@ public partial class MainWindow
         {
             _hotkeyCaptureActionId = string.Empty;
             _hotkeyCaptureMessage = "SHORTCUT UNCHANGED";
+            _hotkeyConflictActionId = string.Empty;
             _hotkeyStudioUiSignature = string.Empty;
             UpdateHotkeyStudio(force: true);
             UpdateHotkeyStatus();
@@ -453,6 +481,7 @@ public partial class MainWindow
                                    && RegisterHotkey(definition, previous);
             _hotkeyRegistrationStates[definition.Id] = previousRestored;
             _hotkeyCaptureMessage = "THAT SHORTCUT IS IN USE · TRY ANOTHER";
+            _hotkeyConflictActionId = string.Empty;
             _hotkeyStudioUiSignature = string.Empty;
             UpdateHotkeyStudio(force: true);
             UpdateHotkeyStatus();
@@ -462,6 +491,7 @@ public partial class MainWindow
         _hotkeyBindings[definition.Id] = candidate;
         _hotkeyRegistrationStates[definition.Id] = candidate.Enabled && _windowHandle != 0;
         _hotkeyCaptureActionId = string.Empty;
+        _hotkeyConflictActionId = string.Empty;
         _hotkeyCaptureMessage = candidate.Enabled
             ? $"SAVED · {HotkeyBindingLogic.Format(candidate)}"
             : $"{definition.CompactLabel} SHORTCUT OFF";
@@ -577,6 +607,7 @@ public partial class MainWindow
             {
                 _hotkeyCaptureActionId = string.Empty;
                 _hotkeyCaptureMessage = "CAPTURE CANCELED";
+                _hotkeyConflictActionId = string.Empty;
                 _hotkeyStudioUiSignature = string.Empty;
                 UpdateHotkeyStudio(force: true);
                 UpdateHotkeyStatus();

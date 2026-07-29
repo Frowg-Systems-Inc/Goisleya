@@ -23,6 +23,37 @@ namespace Isley;
 
 public partial class MainWindow
 {
+    // Clipboard capture tick (capture-sound preference, session baseline).
+    private bool _clipboardCaptureSoundEnabled = true;
+    private UniversalCoordinatePoint? _captureTickLastPoint;
+
+    // Lite Mode auto-suggest (session-scoped, never auto-applies).
+    private bool _playFocusTickSeen;
+    private DateTimeOffset _playFocusLastTickUtc;
+    private int _liteModeSampleCount;
+    private int _liteModeStarvedStreak;
+    private double _liteModeLastStarvedRatio;
+    private bool _liteModeSuggestOffered;
+    private bool _liteModeSuggestSnoozed;
+    private bool _liteModeSuggestTapArmed;
+    private bool _liteModeSuggestTapWired;
+    private int _liteModeSuggestRevision;
+    private string _liteModeSuggestOfferMessage = string.Empty;
+
+    // Layout profiles + programmatic settings UI (XAML stays untouched).
+    private readonly List<HudLayoutProfile> _hudLayoutProfiles = [];
+    private bool _overlayExtrasUiBuilt;
+    private TextBlock? _layoutProfilesHeading;
+    private TextBlock? _layoutProfilesStatusText;
+    private TextBox? _layoutProfileNameBox;
+    private Button? _layoutProfileSaveButton;
+    private StackPanel? _layoutProfileListPanel;
+    private string _layoutProfilesUiSignature = string.Empty;
+    private Button? _captureSoundButton;
+    private TextBlock? _captureSoundStatusText;
+    private Button? _diagnosticsExportButton;
+    private TextBlock? _diagnosticsStatusText;
+
     private void RefreshGameState()
     {
         var gameIsRunning = IsAnyProcessRunning(
@@ -189,6 +220,9 @@ public partial class MainWindow
         UpdateTripReadiness(force: true);
         UpdateLifeRun(force: true);
         UpdateSettingsStorageStatus();
+        EnsureOverlayExtrasUi();
+        UpdateCaptureSoundControls();
+        UpdateLayoutProfileControls(force: true);
     }
 
     private void ToggleVisibility()
@@ -348,6 +382,9 @@ public partial class MainWindow
 
     private void RefreshPlayFocus()
     {
+        TrackPlayFocusSignals(DateTimeOffset.UtcNow);
+        TrackClipboardCaptureTick();
+
         if (_isDocked)
         {
             if (IsVisible) Hide();
@@ -866,6 +903,9 @@ public partial class MainWindow
     private async Task SetLiteModeAsync(bool enabled)
     {
         _liteModeEnabled = enabled;
+        _liteModeStarvedStreak = 0;
+        _liteModeSuggestTapArmed = false;
+        _liteModeSuggestRevision++;
         ApplyLiteModeProfile();
         await ApplyMapOptionsAsync();
         _coreVitalsUiSignature = string.Empty;
@@ -1877,4 +1917,589 @@ public partial class MainWindow
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void TrackPlayFocusSignals(DateTimeOffset nowUtc)
+    {
+        if (_playFocusTickSeen)
+        {
+            var sample = LiteModeSuggestLogic.Sample(
+                _playFocusTimer.Interval.TotalMilliseconds,
+                (nowUtc - _playFocusLastTickUtc).TotalMilliseconds);
+            _liteModeSampleCount = Math.Min(_liteModeSampleCount + 1, 10_000);
+            if (sample.Starved)
+            {
+                _liteModeStarvedStreak = Math.Min(_liteModeStarvedStreak + 1, 10_000);
+                _liteModeLastStarvedRatio = sample.Ratio;
+            }
+            else
+            {
+                _liteModeStarvedStreak = 0;
+            }
+
+            if (LiteModeSuggestLogic.ShouldSuggest(
+                    _liteModeSampleCount,
+                    _liteModeStarvedStreak,
+                    _liteModeEnabled,
+                    _liteModeSuggestOffered,
+                    _liteModeSuggestSnoozed))
+            {
+                _ = OfferLiteModeSuggestionAsync();
+            }
+        }
+
+        _playFocusLastTickUtc = nowUtc;
+        _playFocusTickSeen = true;
+    }
+
+    private async Task OfferLiteModeSuggestionAsync()
+    {
+        if (_liteModeSuggestOffered)
+        {
+            return;
+        }
+
+        // Once per session; expiry without a tap snoozes for the session.
+        _liteModeSuggestOffered = true;
+        var revision = ++_liteModeSuggestRevision;
+        if (!IsLoaded || HotkeyToastBorder is null || HotkeyToastText is null)
+        {
+            _liteModeSuggestSnoozed = true;
+            return;
+        }
+
+        if (!_liteModeSuggestTapWired)
+        {
+            _liteModeSuggestTapWired = true;
+            HotkeyToastBorder.Cursor = Cursors.Hand;
+            HotkeyToastBorder.MouseLeftButtonUp += LiteModeSuggestToast_MouseLeftButtonUp;
+        }
+
+        var message = LiteModeSuggestLogic.OfferMessage(_liteModeLastStarvedRatio);
+        _hotkeyToastRevision++;
+        _liteModeSuggestOfferMessage = message;
+        _liteModeSuggestTapArmed = true;
+        HotkeyToastText.Text = message;
+        HotkeyToastBorder.BorderBrush = (Brush)FindResource("AccentBrush");
+        HotkeyToastBorder.BeginAnimation(OpacityProperty, null);
+        HotkeyToastBorder.Opacity = 1;
+        HotkeyToastBorder.Visibility = Visibility.Visible;
+        AddTacticalEvent(
+            "SYSTEM",
+            "Lite Mode suggested",
+            "Repeated timer lag detected · waiting for the one-tap choice");
+        await Task.Delay(9000);
+        if (!IsLoaded || revision != _liteModeSuggestRevision || !_liteModeSuggestTapArmed)
+        {
+            return;
+        }
+
+        _liteModeSuggestTapArmed = false;
+        _liteModeSuggestSnoozed = true;
+        if (!string.Equals(HotkeyToastText.Text, message, StringComparison.Ordinal))
+        {
+            // Another toast took over; the suggestion still snoozes quietly.
+            return;
+        }
+
+        HotkeyToastBorder.BeginAnimation(
+            OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(
+                1,
+                0,
+                TimeSpan.FromMilliseconds(220)));
+        await Task.Delay(240);
+        if (IsLoaded && revision == _liteModeSuggestRevision)
+        {
+            HotkeyToastBorder.Visibility = Visibility.Collapsed;
+            HotkeyToastBorder.BeginAnimation(OpacityProperty, null);
+            HotkeyToastBorder.Opacity = 1;
+        }
+    }
+
+    private async void LiteModeSuggestToast_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        // Only the visible offer toast is tappable; any other toast is inert.
+        if (!_liteModeSuggestTapArmed
+            || HotkeyToastText is null
+            || !string.Equals(
+                HotkeyToastText.Text,
+                _liteModeSuggestOfferMessage,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _liteModeSuggestTapArmed = false;
+        _liteModeSuggestRevision++;
+        await SetLiteModeAsync(true);
+        AddTacticalEvent("SYSTEM", "Lite Mode suggestion accepted", "Enabled from the one-tap offer");
+        await ShowHotkeyToastAsync("LITE MODE ON · UNDO ANYTIME IN VISUAL COMFORT", true);
+    }
+
+    private void TrackClipboardCaptureTick()
+    {
+        var current = _universalCoordinatePoint;
+        var newCapture = current is not null
+                         && !UniversalCoordinateLogic.SamePoint(current, _captureTickLastPoint);
+        _captureTickLastPoint = current;
+        if (!newCapture || !_clipboardCaptureSoundEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            SystemSounds.Beep.Play();
+        }
+        catch
+        {
+            // Audio feedback must never delay or break the capture path.
+        }
+    }
+
+    private async Task ToggleCaptureSoundAsync()
+    {
+        _clipboardCaptureSoundEnabled = !_clipboardCaptureSoundEnabled;
+        UpdateCaptureSoundControls();
+        SaveSettings();
+        await ShowHotkeyToastAsync(
+            _clipboardCaptureSoundEnabled ? "CAPTURE SOUND ON" : "CAPTURE SOUND OFF",
+            true);
+    }
+
+    private async void CaptureSoundButton_Click(object sender, RoutedEventArgs e) =>
+        await ToggleCaptureSoundAsync();
+
+    private void UpdateCaptureSoundControls()
+    {
+        if (_captureSoundButton is null)
+        {
+            return;
+        }
+
+        _captureSoundButton.Content =
+            $"Capture sound · {(_clipboardCaptureSoundEnabled ? "On" : "Off")}";
+        SetToggleButtonState(_captureSoundButton, _clipboardCaptureSoundEnabled);
+    }
+
+    private void RestoreLayoutProfiles(IEnumerable<HudLayoutProfileSettings>? savedProfiles)
+    {
+        _hudLayoutProfiles.Clear();
+        _hudLayoutProfiles.AddRange(LayoutProfileLogic.NormalizeProfiles(
+            savedProfiles?.Select(saved => new HudLayoutProfile(
+                saved.Name,
+                saved.HudDockMirrored,
+                saved.Expanded,
+                saved.Width,
+                saved.Height,
+                saved.HudDetailModeIndex,
+                saved.NavigationHudVisible,
+                saved.VitalsHudVisible,
+                saved.SurvivalHudVisible,
+                saved.AlertHudVisible,
+                saved.QuickKeysHudVisible,
+                saved.QuickKeysModeIndex,
+                saved.SavedAtUnixMs))));
+        _layoutProfilesUiSignature = string.Empty;
+    }
+
+    private HudLayoutProfile CaptureCurrentLayoutProfile(string name)
+    {
+        var width = _isDocked && double.IsFinite(_dockRestoreWidth)
+            ? _dockRestoreWidth
+            : double.IsFinite(ActualWidth) && ActualWidth > 0
+                ? ActualWidth
+                : double.IsFinite(Width) && Width > 0 ? Width : 472;
+        var height = _isDocked && double.IsFinite(_dockRestoreHeight)
+            ? _dockRestoreHeight
+            : double.IsFinite(ActualHeight) && ActualHeight > 0
+                ? ActualHeight
+                : double.IsFinite(Height) && Height > 0 ? Height : 560;
+        return new HudLayoutProfile(
+            name,
+            _hudDockMirrored,
+            _expanded,
+            width,
+            height,
+            _hudDetailModeIndex,
+            _navigationHudVisible,
+            _vitalsHudVisible,
+            _survivalHudVisible,
+            _alertHudVisible,
+            _quickKeysHudVisible,
+            _quickKeysModeIndex,
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+    }
+
+    private async Task ApplyLayoutProfileAsync(HudLayoutProfile profile)
+    {
+        _hudDockMirrored = profile.HudDockMirrored;
+        _hudDetailModeIndex = Math.Clamp(
+            profile.HudDetailModeIndex,
+            0,
+            _hudDetailModeLabels.Length - 1);
+        _navigationHudVisible = profile.NavigationHudVisible;
+        _vitalsHudVisible = profile.VitalsHudVisible;
+        _survivalHudVisible = profile.SurvivalHudVisible;
+        _alertHudVisible = profile.AlertHudVisible;
+        _quickKeysHudVisible = profile.QuickKeysHudVisible;
+        _quickKeysModeIndex = QuickKeysLogic.NormalizeModeIndex(profile.QuickKeysModeIndex);
+        _expanded = profile.Expanded;
+
+        var sizeNote = string.Empty;
+        if (_isDocked)
+        {
+            _dockRestoreWidth = profile.Width;
+            _dockRestoreHeight = profile.Height;
+            sizeNote = " · SIZE APPLIES ON UNDOCK";
+        }
+        else
+        {
+            var workArea = SystemParameters.WorkArea;
+            Width = Math.Clamp(profile.Width, MinWidth, Math.Max(MinWidth, workArea.Width - 16));
+            Height = Math.Clamp(profile.Height, MinHeight, Math.Max(MinHeight, workArea.Height - 16));
+            if (SizeButton is not null)
+            {
+                SizeButton.Content = _expanded ? "SMALL" : "SIZE";
+            }
+        }
+
+        _hudDockUiSignature = string.Empty;
+        _quickKeysUiSignature = string.Empty;
+        UpdateHudDetailModeControls();
+        UpdateHudDockLayout(animate: IsLoaded);
+        UpdateVitalsHudControl();
+        RefreshHudSurfaceVisibility();
+        SaveSettings();
+        AddTacticalEvent("SYSTEM", "Layout profile applied", profile.Name);
+        await ShowHotkeyToastAsync($"LAYOUT · {profile.Name.ToUpperInvariant()}{sizeNote}", true);
+    }
+
+    private void OpenLayoutProfilesSection()
+    {
+        OpenToolsWorkspace("overlay");
+        EnsureOverlayExtrasUi();
+        if (_layoutProfilesHeading is not null)
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Loaded,
+                new Action(() => _layoutProfilesHeading.BringIntoView()));
+        }
+    }
+
+    private void SaveLayoutProfileFromCommand()
+    {
+        OpenLayoutProfilesSection();
+        LayoutProfileSaveButton_Click(_layoutProfileSaveButton, new RoutedEventArgs());
+    }
+
+    private async void LayoutProfileSaveButton_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_hudLayoutProfiles.Count >= LayoutProfileLogic.MaximumProfiles)
+        {
+            await ShowHotkeyToastAsync(
+                $"PROFILE LIMIT · KEEP UP TO {LayoutProfileLogic.MaximumProfiles}",
+                false);
+            return;
+        }
+
+        var name = LayoutProfileLogic.UniqueName(
+            _layoutProfileNameBox?.Text,
+            _hudLayoutProfiles.Select(profile => profile.Name),
+            _hudLayoutProfiles.Count);
+        _hudLayoutProfiles.Add(CaptureCurrentLayoutProfile(name));
+        if (_layoutProfileNameBox is not null)
+        {
+            _layoutProfileNameBox.Text = string.Empty;
+        }
+        _layoutProfilesUiSignature = string.Empty;
+        UpdateLayoutProfileControls(force: true);
+        SaveSettings();
+        AddTacticalEvent("SYSTEM", "Layout profile saved", name);
+        await ShowHotkeyToastAsync($"LAYOUT SAVED · {name.ToUpperInvariant()}", true);
+    }
+
+    private async void LayoutProfileApplyButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: int index }
+            && index >= 0
+            && index < _hudLayoutProfiles.Count)
+        {
+            await ApplyLayoutProfileAsync(_hudLayoutProfiles[index]);
+        }
+    }
+
+    private async void LayoutProfileOverwriteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int index }
+            || index < 0
+            || index >= _hudLayoutProfiles.Count)
+        {
+            return;
+        }
+
+        var name = _hudLayoutProfiles[index].Name;
+        _hudLayoutProfiles[index] = CaptureCurrentLayoutProfile(name);
+        _layoutProfilesUiSignature = string.Empty;
+        UpdateLayoutProfileControls(force: true);
+        SaveSettings();
+        AddTacticalEvent("SYSTEM", "Layout profile updated", name);
+        await ShowHotkeyToastAsync($"LAYOUT UPDATED · {name.ToUpperInvariant()}", true);
+    }
+
+    private async void LayoutProfileDeleteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: int index }
+            || index < 0
+            || index >= _hudLayoutProfiles.Count)
+        {
+            return;
+        }
+
+        var name = _hudLayoutProfiles[index].Name;
+        _hudLayoutProfiles.RemoveAt(index);
+        _layoutProfilesUiSignature = string.Empty;
+        UpdateLayoutProfileControls(force: true);
+        SaveSettings();
+        AddTacticalEvent("SYSTEM", "Layout profile deleted", name);
+        await ShowHotkeyToastAsync($"LAYOUT DELETED · {name.ToUpperInvariant()}", true);
+    }
+
+    private void UpdateLayoutProfileControls(bool force = false)
+    {
+        if (_layoutProfilesStatusText is null
+            || _layoutProfileSaveButton is null
+            || _layoutProfileListPanel is null)
+        {
+            return;
+        }
+
+        var signature = string.Join('|',
+            _hudLayoutProfiles.Count,
+            string.Join(';', _hudLayoutProfiles.Select(profile =>
+                $"{profile.Name}:{LayoutProfileLogic.Summary(profile)}")));
+        if (!force && string.Equals(signature, _layoutProfilesUiSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+        _layoutProfilesUiSignature = signature;
+
+        var full = _hudLayoutProfiles.Count >= LayoutProfileLogic.MaximumProfiles;
+        _layoutProfilesStatusText.Text = _hudLayoutProfiles.Count == 0
+            ? "NONE SAVED · CAPTURE THE CURRENT LAYOUT"
+            : $"{_hudLayoutProfiles.Count} / {LayoutProfileLogic.MaximumProfiles} SAVED" +
+              (full ? " · DELETE ONE TO SAVE MORE" : string.Empty);
+        _layoutProfilesStatusText.Foreground = full
+            ? (Brush)FindResource("WarningBrush")
+            : (Brush)FindResource("SecondaryTextBrush");
+        _layoutProfileSaveButton.IsEnabled = !full;
+        _layoutProfileSaveButton.Content = full
+            ? $"PROFILE LIMIT {LayoutProfileLogic.MaximumProfiles} REACHED"
+            : "SAVE CURRENT LAYOUT";
+
+        _layoutProfileListPanel.Children.Clear();
+        for (var index = 0; index < _hudLayoutProfiles.Count; index++)
+        {
+            var profile = _hudLayoutProfiles[index];
+            var row = new Grid { Margin = new Thickness(-2, 6, -2, 0) };
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var label = new StackPanel { Margin = new Thickness(2, 0, 4, 0) };
+            label.Children.Add(new TextBlock
+            {
+                Text = profile.Name,
+                FontSize = 8,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)FindResource("PrimaryTextBrush"),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+            label.Children.Add(new TextBlock
+            {
+                Text = LayoutProfileLogic.Summary(profile),
+                Margin = new Thickness(0, 1, 0, 0),
+                FontSize = 7,
+                Foreground = (Brush)FindResource("SecondaryTextBrush"),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+            row.Children.Add(label);
+
+            var applyButton = new Button
+            {
+                Tag = index,
+                Style = (Style)FindResource("DrawerCompactButton"),
+                Content = "APPLY",
+                ToolTip = $"Apply {profile.Name}: dock side, window size, HUD detail, and HUD surfaces"
+            };
+            applyButton.Click += LayoutProfileApplyButton_Click;
+            Grid.SetColumn(applyButton, 1);
+            row.Children.Add(applyButton);
+
+            var overwriteButton = new Button
+            {
+                Tag = index,
+                Margin = new Thickness(3, 0, 0, 0),
+                Style = (Style)FindResource("DrawerCompactButton"),
+                Content = "SAVE",
+                ToolTip = $"Overwrite {profile.Name} with the current layout"
+            };
+            overwriteButton.Click += LayoutProfileOverwriteButton_Click;
+            Grid.SetColumn(overwriteButton, 2);
+            row.Children.Add(overwriteButton);
+
+            var deleteButton = new Button
+            {
+                Tag = index,
+                Margin = new Thickness(3, 0, 0, 0),
+                Style = (Style)FindResource("DrawerCompactButton"),
+                Content = "✕",
+                ToolTip = $"Delete {profile.Name}"
+            };
+            deleteButton.Click += LayoutProfileDeleteButton_Click;
+            Grid.SetColumn(deleteButton, 3);
+            row.Children.Add(deleteButton);
+
+            _layoutProfileListPanel.Children.Add(row);
+        }
+    }
+
+    private void EnsureOverlayExtrasUi()
+    {
+        if (_overlayExtrasUiBuilt || OverlayToolsPanel is null)
+        {
+            return;
+        }
+        _overlayExtrasUiBuilt = true;
+
+        if (HudDockStatusText?.Parent is Panel dockParent)
+        {
+            var dockIndex = dockParent.Children.IndexOf(HudDockStatusText);
+            if (dockIndex >= 0)
+            {
+                dockParent.Children.Insert(dockIndex + 1, BuildLayoutProfilesSection());
+            }
+        }
+
+        if (PortableConfigStatusText?.Parent is Panel prefsParent)
+        {
+            var prefsIndex = prefsParent.Children.IndexOf(PortableConfigStatusText);
+            if (prefsIndex >= 0)
+            {
+                prefsParent.Children.Insert(prefsIndex + 1, BuildFeedbackDiagnosticsSection());
+            }
+        }
+    }
+
+    private StackPanel BuildLayoutProfilesSection()
+    {
+        var section = new StackPanel();
+        _layoutProfilesHeading = new TextBlock
+        {
+            Style = (Style)FindResource("SectionLabel"),
+            Text = "LAYOUT PROFILES"
+        };
+        section.Children.Add(_layoutProfilesHeading);
+        _layoutProfilesStatusText = new TextBlock
+        {
+            Margin = new Thickness(1, 0, 0, 5),
+            FontSize = 8,
+            FontWeight = FontWeights.Bold,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("SecondaryTextBrush")
+        };
+        section.Children.Add(_layoutProfilesStatusText);
+
+        var border = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 5),
+            Padding = new Thickness(8, 6),
+            CornerRadius = new CornerRadius(8),
+            Background = new SolidColorBrush(Color.FromArgb(0x70, 0x14, 0x1B, 0x24)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0x64, 0x74, 0x8B)),
+            BorderThickness = new Thickness(1)
+        };
+        var content = new StackPanel();
+        _layoutProfileNameBox = new TextBox
+        {
+            Style = (Style)FindResource("DrawerTextBox"),
+            MaxLength = LayoutProfileLogic.MaximumNameLength,
+            ToolTip = "Optional profile name (up to 24 characters) · blank uses Layout N"
+        };
+        System.Windows.Automation.AutomationProperties.SetName(
+            _layoutProfileNameBox,
+            "New layout profile name");
+        content.Children.Add(_layoutProfileNameBox);
+        _layoutProfileSaveButton = new Button
+        {
+            Margin = new Thickness(-2, 6, -2, -2),
+            Style = (Style)FindResource("DrawerCompactButton"),
+            ToolTip = "Save the current dock side, window size, HUD detail, and HUD surfaces",
+            Content = "SAVE CURRENT LAYOUT"
+        };
+        System.Windows.Automation.AutomationProperties.SetName(
+            _layoutProfileSaveButton,
+            "Save current layout profile");
+        _layoutProfileSaveButton.Click += LayoutProfileSaveButton_Click;
+        content.Children.Add(_layoutProfileSaveButton);
+        _layoutProfileListPanel = new StackPanel();
+        content.Children.Add(_layoutProfileListPanel);
+        border.Child = content;
+        section.Children.Add(border);
+        section.Children.Add(new TextBlock
+        {
+            Margin = new Thickness(1, 0, 0, 0),
+            FontSize = 7,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            Text = "Up to 8 named layouts · dock side, window size, HUD detail, and HUD surfaces · saved in preferences."
+        });
+        return section;
+    }
+
+    private StackPanel BuildFeedbackDiagnosticsSection()
+    {
+        var section = new StackPanel();
+        section.Children.Add(new TextBlock
+        {
+            Style = (Style)FindResource("SectionLabel"),
+            Text = "FEEDBACK & DIAGNOSTICS"
+        });
+        _captureSoundButton = new Button
+        {
+            Style = (Style)FindResource("DrawerButton"),
+            ToolTip = "Play a subtle tick when a clipboard position capture succeeds",
+            Content = "Capture sound · On"
+        };
+        _captureSoundButton.Click += CaptureSoundButton_Click;
+        section.Children.Add(_captureSoundButton);
+        _captureSoundStatusText = new TextBlock
+        {
+            Margin = new Thickness(2, -2, 2, 3),
+            FontSize = 8,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            Text = "Tick plays after a position lands · never blocks the capture."
+        };
+        section.Children.Add(_captureSoundStatusText);
+        _diagnosticsExportButton = new Button
+        {
+            Style = (Style)FindResource("DrawerButton"),
+            ToolTip = "Save a support zip with crash logs, redacted settings, and environment info",
+            Content = "Export diagnostics bundle"
+        };
+        _diagnosticsExportButton.Click += DiagnosticsExportButton_Click;
+        section.Children.Add(_diagnosticsExportButton);
+        _diagnosticsStatusText = new TextBlock
+        {
+            Margin = new Thickness(2, -2, 2, 3),
+            FontSize = 8,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            Text = "Secrets stay out · crash logs capped at 256 KB."
+        };
+        section.Children.Add(_diagnosticsStatusText);
+        return section;
+    }
 }

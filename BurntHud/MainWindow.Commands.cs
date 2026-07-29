@@ -1092,6 +1092,19 @@ public partial class MainWindow
                     applied);
                 break;
             }
+            case "layout-profiles":
+                OpenLayoutProfilesSection();
+                await ShowHotkeyToastAsync("LAYOUT PROFILES OPEN", true);
+                break;
+            case "layout-profile-save":
+                SaveLayoutProfileFromCommand();
+                break;
+            case "capture-sound":
+                await ToggleCaptureSoundAsync();
+                break;
+            case "diagnostics-export":
+                await ExportDiagnosticsBundleAsync();
+                break;
         }
     }
 
