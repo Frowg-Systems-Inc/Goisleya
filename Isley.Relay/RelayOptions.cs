@@ -9,11 +9,30 @@ public sealed class RelayOptions
     public string StatePath { get; init; } = "data/state";
     public int FrameFreshnessSeconds { get; init; } = 10;
     public int AllowedClockSkewSeconds { get; init; } = 30;
+
+    /// <summary>
+    /// Operational counters endpoint posture. False (default) keeps /metrics
+    /// loopback-only, matching the loopback-gated status UI; true widens it to
+    /// any caller. The payload never includes bridge server IDs or viewer data.
+    /// </summary>
+    public bool MetricsPubliclyVisible { get; init; }
+
+    /// <summary>
+    /// Send stream-version-2 delta frames to viewers that negotiate them.
+    /// Viewers that do not negotiate keep receiving version-1 full snapshots.
+    /// </summary>
+    public bool ViewerDeltaEncodingEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Maximum delta frames between full keyframe snapshots per viewer.
+    /// </summary>
+    public int ViewerKeyframeIntervalFrames { get; init; } = 240;
     public BridgeRegistration[] Bridges { get; init; } = [];
 
     public static bool IsValid(RelayOptions value) =>
         value.FrameFreshnessSeconds is >= 2 and <= 60
         && value.AllowedClockSkewSeconds is >= 5 and <= 120
+        && value.ViewerKeyframeIntervalFrames is >= 16 and <= 4096
         && value.Bridges.Length <= 10_000
         && value.Bridges.Select(bridge => bridge.ServerId)
             .Distinct(StringComparer.Ordinal)
