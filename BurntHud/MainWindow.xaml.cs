@@ -897,7 +897,13 @@ public partial class MainWindow : Window
         new("streamer", "Toggle streamer mode", "Hide live positions, identities, and sensitive context", "privacy stream hide redact"),
         new("reload", "Reload live map", "Refresh the local map shell and current Gateway layers", "refresh reconnect map reload"),
         new("preset-navigation", "Apply TRAVEL layers", "Place names plus sanctuary, migration, and patrol zones", "preset map layers zones navigation travel"),
-        new("preset-survival", "Apply SURVIVAL layers", "Travel layers plus food sites and nearby live players", "preset food heatmap migration survival travel")
+        new("preset-survival", "Apply SURVIVAL layers", "Travel layers plus food sites and nearby live players", "preset food heatmap migration survival travel"),
+        new("map-undo-clear", "Undo last map clear", "Restore the pins, route, no-go area, or measurement removed by the last clear", "undo clear pins route no-go measurement restore markers back"),
+        new("map-routes-share", "Copy route share code", "Copy a share code of your active route plan to send to your pack", "route share code copy export map pack send plan stops"),
+        new("map-routes-import", "Import shared route", "Start a route from a pack member's share code on your clipboard", "route share code import paste start map pack receive plan"),
+        new("map-nogo-share", "Copy no-go share code", "Copy a share code of your no-go areas to send to your pack", "no-go area share code copy export map pack send zone avoid"),
+        new("map-nogo-import", "Import shared no-go areas", "Add no-go areas from a pack member's share code on your clipboard", "no-go area share code import paste add map pack receive zone"),
+        new("map-route-replan", "Toggle route auto-replan", "Re-plan the active route from your position when you stray off it", "route auto replan deviation off course toggle reroute stray")
     ];
 
     private sealed class PlaceSearchSuggestion

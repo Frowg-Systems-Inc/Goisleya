@@ -23,22 +23,6 @@ namespace Isley;
 
 public partial class MainWindow
 {
-    // Map-tool Quick Commands registered by this partial so the static catalog
-    // in MainWindow.xaml.cs (and its contract-ledger count) stays untouched
-    // while feature partials own their own entries.
-    private static readonly CommandPaletteActionInfo[] MapToolQuickCommandEntries =
-    [
-        new("map-undo-clear", "Undo last map clear", "Restore the pins, route, no-go area, or measurement removed by the last clear", "undo clear pins route no-go measurement restore markers back"),
-        new("map-routes-share", "Copy route share code", "Copy a share code of your active route plan to send to your pack", "route share code copy export map pack send plan stops"),
-        new("map-routes-import", "Import shared route", "Start a route from a pack member's share code on your clipboard", "route share code import paste start map pack receive plan"),
-        new("map-nogo-share", "Copy no-go share code", "Copy a share code of your no-go areas to send to your pack", "no-go area share code copy export map pack send zone avoid"),
-        new("map-nogo-import", "Import shared no-go areas", "Add no-go areas from a pack member's share code on your clipboard", "no-go area share code import paste add map pack receive zone"),
-        new("map-route-replan", "Toggle route auto-replan", "Re-plan the active route from your position when you stray off it", "route auto replan deviation off course toggle reroute stray")
-    ];
-
-    private static readonly CommandPaletteActionInfo[] EffectiveQuickCommandEntries =
-        [.. CommandPaletteActions, .. MapToolQuickCommandEntries];
-
     private void OpenOnboardingTutorial()
     {
         if (_isDocked)
@@ -307,7 +291,7 @@ public partial class MainWindow
         var result = CommandQuickAccessLogic.ToggleFavorite(
             _commandFavoriteActionIds,
             actionId,
-            EffectiveQuickCommandEntries.Select(action => action.Id));
+            CommandPaletteActions.Select(action => action.Id));
         if (result.LimitReached)
         {
             await ShowHotkeyToastAsync(
@@ -353,11 +337,11 @@ public partial class MainWindow
         if (query.Length == 0)
         {
             var defaultActionIds = CommandQuickAccessLogic.BuildDefaultOrder(
-                EffectiveQuickCommandEntries.Select(action => action.Id),
+                CommandPaletteActions.Select(action => action.Id),
                 _commandFavoriteActionIds,
                 _commandRecentActionIds,
                 maximumResults: 7);
-            var actionsById = EffectiveQuickCommandEntries.ToDictionary(
+            var actionsById = CommandPaletteActions.ToDictionary(
                 action => action.Id,
                 StringComparer.OrdinalIgnoreCase);
             ranked = defaultActionIds
@@ -367,7 +351,7 @@ public partial class MainWindow
         }
         else
         {
-            ranked = EffectiveQuickCommandEntries
+            ranked = CommandPaletteActions
                 .Select(action =>
                 {
                     var baseScore = ScoreCommandPaletteAction(action, query);
@@ -518,7 +502,7 @@ public partial class MainWindow
         var next = CommandQuickAccessLogic.RecordRecent(
             _commandRecentActionIds,
             actionId,
-            EffectiveQuickCommandEntries.Select(action => action.Id));
+            CommandPaletteActions.Select(action => action.Id));
         if (_commandRecentActionIds.SequenceEqual(next, StringComparer.OrdinalIgnoreCase))
         {
             return;
@@ -533,7 +517,7 @@ public partial class MainWindow
     {
         if (string.IsNullOrWhiteSpace(query))
         {
-            var frequentIndex = Array.FindIndex(EffectiveQuickCommandEntries, candidate => candidate.Id == action.Id);
+            var frequentIndex = Array.FindIndex(CommandPaletteActions, candidate => candidate.Id == action.Id);
             return Math.Max(0, 100 - frequentIndex);
         }
 
