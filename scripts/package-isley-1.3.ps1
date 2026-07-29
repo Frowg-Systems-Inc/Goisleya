@@ -1,5 +1,6 @@
 param(
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+    [string]$PreviousClientArchive = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -274,6 +275,155 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.CompressionLevel]::Optimal,
     $false)
 
+# --- File-level delta package between the previous and current client build ---
+# Emits Isley-delta-<from>-<to>.zip (changed/new files + isley-delta-manifest.json
+# with the delete list) so the update client can prefer a smaller verified
+# download. Not binary diffing: every entry is a whole file, auditable by hand.
+$deltaFromVersion = $null
+$deltaArchive = $null
+$resolvedPrevious = $null
+if (-not [string]::IsNullOrWhiteSpace($PreviousClientArchive)) {
+    $resolvedPrevious = (Resolve-Path -LiteralPath $PreviousClientArchive).Path
+}
+else {
+    $previousCandidate = Get-ChildItem -LiteralPath $artifacts `
+        -Filter "Isley-Windows-x64-*.zip" -File |
+        Where-Object { $_.FullName -ne $clientArchive } |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+    if ($null -ne $previousCandidate) {
+        $resolvedPrevious = $previousCandidate.FullName
+    }
+}
+
+if ($null -ne $resolvedPrevious) {
+    $previousRoot = Join-Path ([System.IO.Path]::GetTempPath()) `
+        ("isley-delta-prev-" + [Guid]::NewGuid().ToString("N"))
+    $deltaStage = Join-Path ([System.IO.Path]::GetTempPath()) `
+        ("isley-delta-stage-" + [Guid]::NewGuid().ToString("N"))
+    try {
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($resolvedPrevious, $previousRoot)
+        if (Test-Path -LiteralPath (Join-Path $previousRoot "IsleyData")) {
+            throw "The previous release archive unexpectedly contains runtime user data."
+        }
+
+        $previousAssembly = Join-Path $previousRoot "Isley.dll"
+        if (-not (Test-Path -LiteralPath $previousAssembly -PathType Leaf)) {
+            throw "The previous release archive is missing Isley.dll."
+        }
+        $previousAssemblyVersion = [System.Reflection.AssemblyName]::GetAssemblyName(
+            $previousAssembly).Version
+        $deltaFromVersion = "{0}.{1}.{2}" -f `
+            $previousAssemblyVersion.Major, `
+            $previousAssemblyVersion.Minor, `
+            $previousAssemblyVersion.Build
+        if ($previousAssemblyVersion -ge [Version]$version) {
+            throw "The previous release ($deltaFromVersion) is not older than $version."
+        }
+
+        function Get-IsleyTreeHashes {
+            param([Parameter(Mandatory = $true)][string]$Root)
+            $map = @{}
+            Get-ChildItem -LiteralPath $Root -Recurse -File | ForEach-Object {
+                $relative = $_.FullName.Substring($Root.Length).TrimStart('\')
+                $map[$relative] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+            }
+            return $map
+        }
+
+        $currentHashes = Get-IsleyTreeHashes -Root $clientStage
+        $previousHashes = Get-IsleyTreeHashes -Root $previousRoot
+        $changed = @()
+        foreach ($relative in $currentHashes.Keys) {
+            if (-not $previousHashes.ContainsKey($relative) `
+                -or $previousHashes[$relative] -ne $currentHashes[$relative]) {
+                $changed += $relative
+            }
+        }
+        $deleted = @()
+        foreach ($relative in $previousHashes.Keys) {
+            if (-not $currentHashes.ContainsKey($relative)) {
+                $deleted += $relative
+            }
+        }
+        # The updater helper always ships inside a delta so the install-side
+        # delete-list step runs the verified new helper, never an older one.
+        foreach ($helper in @("Updater\Isley.Updater.exe", "Updater\Isley.Updater.dll")) {
+            if ($currentHashes.ContainsKey($helper) -and $changed -notcontains $helper) {
+                $changed += $helper
+            }
+        }
+
+        if ($changed.Count -eq 0) {
+            throw "The previous and current client builds are identical; no delta is possible."
+        }
+        if ($deleted.Count -gt 2000) {
+            throw "The delta delete list exceeded its safety limit."
+        }
+
+        $deletedNormalized = @($deleted |
+            ForEach-Object { $_.Replace("\", "/") } |
+            Sort-Object)
+        foreach ($relative in $deletedNormalized) {
+            if ($relative.StartsWith("IsleyData/", [System.StringComparison]::OrdinalIgnoreCase) `
+                -or ($relative.Split("/") -contains "..")) {
+                throw "The delta delete list contains an unsafe path: $relative"
+            }
+        }
+
+        New-Item -ItemType Directory -Path $deltaStage -Force | Out-Null
+        foreach ($relative in $changed) {
+            $destination = Join-Path $deltaStage $relative
+            New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $clientStage $relative) `
+                -Destination $destination -Force
+        }
+        # Unary comma keeps a single-entry delete list a JSON array.
+        $deltaManifest = [ordered]@{
+            format = 1
+            fromVersion = $deltaFromVersion
+            toVersion = $version
+            deletedFiles = , $deletedNormalized
+        } | ConvertTo-Json
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText(
+            (Join-Path $deltaStage "isley-delta-manifest.json"),
+            $deltaManifest,
+            $utf8NoBom)
+
+        $deltaArchive = Join-Path $artifacts `
+            ("Isley-delta-{0}-{1}.zip" -f $deltaFromVersion, $version)
+        if (Test-Path -LiteralPath $deltaArchive) {
+            Remove-Item -LiteralPath $deltaArchive -Force
+        }
+        [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            $deltaStage,
+            $deltaArchive,
+            [System.IO.Compression.CompressionLevel]::Optimal,
+            $false)
+        if ((Get-Item -LiteralPath $deltaArchive).Length `
+                -ge (Get-Item -LiteralPath $clientArchive).Length) {
+            # A delta that saves nothing must not be published.
+            Remove-Item -LiteralPath $deltaArchive -Force
+            $deltaArchive = $null
+        }
+    }
+    finally {
+        foreach ($temporary in @($previousRoot, $deltaStage)) {
+            if (Test-Path -LiteralPath $temporary) {
+                Remove-Item -LiteralPath $temporary -Recurse -Force
+            }
+        }
+    }
+}
+
+$deltaBytes = $null
+$deltaSha256 = $null
+if ($null -ne $deltaArchive) {
+    $deltaBytes = (Get-Item -LiteralPath $deltaArchive).Length
+    $deltaSha256 = (Get-FileHash -LiteralPath $deltaArchive -Algorithm SHA256).Hash
+}
+
 [pscustomobject]@{
     Version = $version
     ClientArchive = $clientArchive
@@ -282,4 +432,8 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
     ServerArchive = $serverArchive
     ServerBytes = (Get-Item -LiteralPath $serverArchive).Length
     ServerSha256 = (Get-FileHash -LiteralPath $serverArchive -Algorithm SHA256).Hash
+    DeltaFromVersion = $deltaFromVersion
+    DeltaArchive = $deltaArchive
+    DeltaBytes = $deltaBytes
+    DeltaSha256 = $deltaSha256
 }

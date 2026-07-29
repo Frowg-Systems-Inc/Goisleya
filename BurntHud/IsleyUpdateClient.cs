@@ -6,55 +6,63 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace Isley;
 
 internal sealed record StagedIsleyUpdate(
     IsleyRelease Release,
     string PackageDirectory,
-    string UpdaterExecutable);
+    string UpdaterExecutable,
+    bool IsDelta);
+
+internal sealed record IsleyReleaseFetchResult(
+    IsleyRelease Release,
+    bool BetaFallback);
 
 internal static class IsleyUpdateClient
 {
+    private const int MinimumFullPackageEntries = 20;
+    private const int MinimumDeltaPackageEntries = 1;
+    private const int MaxBootOkMarkerBytes = 1024;
+
     private static readonly HttpClient Client = CreateClient();
 
-    internal static async Task<IsleyRelease> FetchReleaseAsync(
+    internal static async Task<IsleyReleaseFetchResult> FetchReleaseAsync(
+        bool preferBeta,
         CancellationToken cancellationToken)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(8));
-        using var request = new HttpRequestMessage(
-            HttpMethod.Get,
-            IsleyReleaseLogic.ReleaseEndpoint);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        request.Headers.CacheControl = new CacheControlHeaderValue
+        if (preferBeta)
         {
-            NoCache = true,
-            NoStore = true
-        };
-
-        using var response = await Client.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            timeout.Token);
-        response.EnsureSuccessStatusCode();
-        if (response.RequestMessage?.RequestUri?.AbsoluteUri
-                != IsleyReleaseLogic.ReleaseEndpoint
-            || response.Content.Headers.ContentLength
-                is > IsleyReleaseLogic.MaxManifestBytes)
-        {
-            throw new InvalidDataException("The Isley release channel returned an unexpected response.");
+            try
+            {
+                var beta = await FetchManifestAsync(
+                    IsleyReleaseLogic.BetaReleaseEndpoint,
+                    IsleyReleaseLogic.BetaChannel,
+                    cancellationToken);
+                return new IsleyReleaseFetchResult(beta, BetaFallback: false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // A missing, unreachable, or invalid beta manifest never breaks
+                // the stable channel; the caller surfaces the fallback honestly.
+            }
         }
 
-        var json = await ReadBoundedTextAsync(
-            response.Content,
-            IsleyReleaseLogic.MaxManifestBytes,
-            timeout.Token);
-        return IsleyReleaseLogic.ParseManifest(json, DateTimeOffset.UtcNow);
+        var stable = await FetchManifestAsync(
+            IsleyReleaseLogic.ReleaseEndpoint,
+            IsleyReleaseLogic.StableChannel,
+            cancellationToken);
+        return new IsleyReleaseFetchResult(stable, BetaFallback: preferBeta);
     }
 
     internal static async Task<StagedIsleyUpdate> StageAsync(
         IsleyRelease release,
+        Version currentVersion,
         IProgress<int>? progress,
         CancellationToken cancellationToken)
     {
@@ -72,13 +80,40 @@ internal static class IsleyUpdateClient
 
         try
         {
+            if (release.Delta is { } delta
+                && IsleyReleaseLogic.IsSameVersion(currentVersion, delta.FromVersion))
+            {
+                try
+                {
+                    return await StageDeltaAsync(
+                        release,
+                        delta,
+                        stageDirectory,
+                        progress,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    // Any delta mismatch or failure falls back to the full
+                    // verified package; a broken delta never bricks an update.
+                    DeleteContainedDirectory(updatesRoot, stageDirectory);
+                    Directory.CreateDirectory(packageDirectory);
+                    progress?.Report(0);
+                }
+            }
+
             await DownloadArchiveAsync(
-                release,
+                release.DownloadUri,
+                release.Bytes,
                 archivePath,
                 progress,
                 cancellationToken);
             ValidateArchiveHash(archivePath, release.Sha256);
-            ExtractArchive(archivePath, packageDirectory);
+            ExtractArchive(archivePath, packageDirectory, MinimumFullPackageEntries);
             ValidateStagedPackage(packageDirectory, release.Version);
 
             var updaterExecutable = Path.Combine(
@@ -88,13 +123,46 @@ internal static class IsleyUpdateClient
             return new StagedIsleyUpdate(
                 release,
                 packageDirectory,
-                updaterExecutable);
+                updaterExecutable,
+                IsDelta: false);
         }
         catch
         {
             DeleteContainedDirectory(updatesRoot, stageDirectory);
             throw;
         }
+    }
+
+    private static async Task<StagedIsleyUpdate> StageDeltaAsync(
+        IsleyRelease release,
+        IsleyDeltaOffer delta,
+        string stageDirectory,
+        IProgress<int>? progress,
+        CancellationToken cancellationToken)
+    {
+        var deltaDirectory = Path.Combine(stageDirectory, "delta-package");
+        var deltaArchivePath = Path.Combine(stageDirectory, "Isley-delta.zip");
+        Directory.CreateDirectory(deltaDirectory);
+
+        await DownloadArchiveAsync(
+            delta.DownloadUri,
+            delta.Bytes,
+            deltaArchivePath,
+            progress,
+            cancellationToken);
+        ValidateArchiveHash(deltaArchivePath, delta.Sha256);
+        ExtractArchive(deltaArchivePath, deltaDirectory, MinimumDeltaPackageEntries);
+        ValidateDeltaPackage(deltaDirectory, delta, release.Version);
+
+        var updaterExecutable = Path.Combine(
+            deltaDirectory,
+            "Updater",
+            "Isley.Updater.exe");
+        return new StagedIsleyUpdate(
+            release,
+            deltaDirectory,
+            updaterExecutable,
+            IsDelta: true);
     }
 
     internal static bool CanWriteInstallDirectory(string installDirectory)
@@ -153,6 +221,11 @@ internal static class IsleyUpdateClient
         info.ArgumentList.Add("Isley.exe");
         info.ArgumentList.Add("--version");
         info.ArgumentList.Add(staged.Release.VersionText);
+        if (staged.IsDelta)
+        {
+            info.ArgumentList.Add("--mode");
+            info.ArgumentList.Add("delta");
+        }
 
         return Process.Start(info)
                ?? throw new InvalidOperationException("Windows could not start the Isley updater.");
@@ -179,6 +252,88 @@ internal static class IsleyUpdateClient
             : stagedUpdaterExecutable;
     }
 
+    internal static void WriteBootOkMarker(string markerPath, string versionText)
+    {
+        if (!IsleyReleaseLogic.IsValidVersionText(versionText))
+        {
+            throw new InvalidDataException("The boot confirmation version was invalid.");
+        }
+
+        var directory = Path.GetDirectoryName(markerPath);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            throw new InvalidDataException("The boot confirmation path was invalid.");
+        }
+
+        var json = JsonSerializer.Serialize(new
+        {
+            version = versionText.Trim(),
+            confirmedAt = DateTimeOffset.UtcNow
+        });
+        if (Encoding.UTF8.GetByteCount(json) > MaxBootOkMarkerBytes)
+        {
+            throw new InvalidDataException("The boot confirmation exceeded its safety limit.");
+        }
+
+        Directory.CreateDirectory(directory);
+        var temporaryPath = Path.Combine(
+            directory,
+            $".last-boot-ok.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllText(temporaryPath, json);
+            File.Move(temporaryPath, markerPath, overwrite: true);
+            temporaryPath = null;
+        }
+        finally
+        {
+            if (temporaryPath is not null)
+            {
+                try { File.Delete(temporaryPath); } catch { }
+            }
+        }
+    }
+
+    internal static bool TryReadBootOkMarker(string markerPath, out string? versionText)
+    {
+        versionText = null;
+        try
+        {
+            if (!File.Exists(markerPath)
+                || new FileInfo(markerPath).Length is 0 or > MaxBootOkMarkerBytes)
+            {
+                return false;
+            }
+
+            using var document = JsonDocument.Parse(File.ReadAllText(markerPath));
+            var root = document.RootElement;
+            var version = root.TryGetProperty("version", out var versionValue)
+                          && versionValue.ValueKind == JsonValueKind.String
+                ? versionValue.GetString() ?? string.Empty
+                : string.Empty;
+            var confirmedAtValid = root.TryGetProperty("confirmedAt", out var confirmedAtValue)
+                && confirmedAtValue.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(
+                    confirmedAtValue.GetString(),
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal
+                    | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                    out _);
+            if (!IsleyReleaseLogic.IsValidVersionText(version) || !confirmedAtValid)
+            {
+                return false;
+            }
+
+            versionText = version.Trim();
+            return true;
+        }
+        catch
+        {
+            // A malformed marker is diagnostic only; it must never throw.
+            return false;
+        }
+    }
+
     private static bool FilesHaveIdenticalSha256(string leftPath, string rightPath)
     {
         using var left = File.OpenRead(leftPath);
@@ -188,13 +343,48 @@ internal static class IsleyUpdateClient
         return CryptographicOperations.FixedTimeEquals(leftHash, rightHash);
     }
 
+    private static async Task<IsleyRelease> FetchManifestAsync(
+        string endpoint,
+        string channel,
+        CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.CacheControl = new CacheControlHeaderValue
+        {
+            NoCache = true,
+            NoStore = true
+        };
+
+        using var response = await Client.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            timeout.Token);
+        response.EnsureSuccessStatusCode();
+        if (response.RequestMessage?.RequestUri?.AbsoluteUri != endpoint
+            || response.Content.Headers.ContentLength
+                is > IsleyReleaseLogic.MaxManifestBytes)
+        {
+            throw new InvalidDataException("The Isley release channel returned an unexpected response.");
+        }
+
+        var json = await ReadBoundedTextAsync(
+            response.Content,
+            IsleyReleaseLogic.MaxManifestBytes,
+            timeout.Token);
+        return IsleyReleaseLogic.ParseManifest(json, DateTimeOffset.UtcNow, channel);
+    }
+
     private static async Task DownloadArchiveAsync(
-        IsleyRelease release,
+        Uri downloadUri,
+        long expectedBytes,
         string archivePath,
         IProgress<int>? progress,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, release.DownloadUri);
+        using var request = new HttpRequestMessage(HttpMethod.Get, downloadUri);
         request.Headers.CacheControl = new CacheControlHeaderValue
         {
             NoCache = true,
@@ -205,10 +395,9 @@ internal static class IsleyUpdateClient
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
         response.EnsureSuccessStatusCode();
-        if (response.RequestMessage?.RequestUri?.AbsoluteUri
-                != IsleyReleaseLogic.StableDownloadUrl
+        if (response.RequestMessage?.RequestUri?.AbsoluteUri != downloadUri.AbsoluteUri
             || response.Content.Headers.ContentLength is { } contentLength
-                && contentLength != release.Bytes)
+                && contentLength != expectedBytes)
         {
             throw new InvalidDataException("The Isley update download did not match its release notice.");
         }
@@ -232,13 +421,13 @@ internal static class IsleyUpdateClient
                 break;
             }
             total += read;
-            if (total > release.Bytes
+            if (total > expectedBytes
                 || total > IsleyReleaseLogic.MaximumArchiveBytes)
             {
                 throw new InvalidDataException("The Isley update download exceeded its declared size.");
             }
             await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-            var percent = (int)Math.Clamp(total * 100 / release.Bytes, 0, 100);
+            var percent = (int)Math.Clamp(total * 100 / expectedBytes, 0, 100);
             if (percent != lastPercent)
             {
                 progress?.Report(percent);
@@ -247,7 +436,7 @@ internal static class IsleyUpdateClient
         }
 
         await output.FlushAsync(cancellationToken);
-        if (total != release.Bytes)
+        if (total != expectedBytes)
         {
             throw new InvalidDataException("The Isley update download was incomplete.");
         }
@@ -266,10 +455,14 @@ internal static class IsleyUpdateClient
         }
     }
 
-    private static void ExtractArchive(string archivePath, string packageDirectory)
+    private static void ExtractArchive(
+        string archivePath,
+        string packageDirectory,
+        int minimumEntries)
     {
         using var archive = ZipFile.OpenRead(archivePath);
-        if (archive.Entries.Count is < 20 or > IsleyReleaseLogic.MaximumArchiveEntries)
+        if (archive.Entries.Count < minimumEntries
+            || archive.Entries.Count > IsleyReleaseLogic.MaximumArchiveEntries)
         {
             throw new InvalidDataException("The Isley update archive was incomplete or oversized.");
         }
@@ -331,6 +524,45 @@ internal static class IsleyUpdateClient
         if (stagedVersion.CompareTo(expectedVersion) < 0)
         {
             throw new InvalidDataException("The Isley update archive contained an older application build.");
+        }
+    }
+
+    private static void ValidateDeltaPackage(
+        string packageDirectory,
+        IsleyDeltaOffer delta,
+        Version expectedVersion)
+    {
+        var manifestPath = Path.Combine(packageDirectory, "isley-delta-manifest.json");
+        if (!File.Exists(manifestPath)
+            || new FileInfo(manifestPath).Length is 0
+                or > IsleyReleaseLogic.MaxDeltaManifestBytes)
+        {
+            throw new InvalidDataException("The Isley delta update was missing its file list.");
+        }
+
+        _ = IsleyReleaseLogic.ParseDeltaManifest(
+            File.ReadAllText(manifestPath),
+            delta.FromVersion,
+            expectedVersion);
+
+        // Delta packages always carry the updater helper so the install-side
+        // delete-list step runs the verified new helper, never an older one.
+        if (!File.Exists(Path.Combine(packageDirectory, "Updater", "Isley.Updater.exe")))
+        {
+            throw new InvalidDataException("The Isley delta update was missing the updater helper.");
+        }
+
+        var isleyLibrary = Path.Combine(packageDirectory, "Isley.dll");
+        if (File.Exists(isleyLibrary))
+        {
+            var stagedVersion = AssemblyName
+                .GetAssemblyName(isleyLibrary)
+                .Version
+                ?? new Version(0, 0, 0);
+            if (stagedVersion.CompareTo(expectedVersion) < 0)
+            {
+                throw new InvalidDataException("The Isley delta archive contained an older application build.");
+            }
         }
     }
 

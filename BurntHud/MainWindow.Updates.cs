@@ -63,13 +63,25 @@ public partial class MainWindow
 
         try
         {
-            var release = await IsleyUpdateClient.FetchReleaseAsync(
+            var fetch = await IsleyUpdateClient.FetchReleaseAsync(
+                _preferBetaUpdates,
                 _isleyUpdateCancellation.Token);
+            var release = fetch.Release;
+            var channelTag = string.Equals(
+                release.Channel,
+                IsleyReleaseLogic.BetaChannel,
+                StringComparison.Ordinal)
+                ? " BETA"
+                : string.Empty;
             if (IsleyReleaseLogic.IsNewer(CurrentIsleyVersion, release.Version))
             {
                 _availableIsleyRelease = release;
                 _isleyUpdateStatus =
-                    $"v{release.VersionText} READY · VERIFIED DOWNLOAD";
+                    $"v{release.VersionText}{channelTag} READY · VERIFIED DOWNLOAD";
+                if (fetch.BetaFallback)
+                {
+                    _isleyUpdateStatus += " · BETA CHANNEL UNAVAILABLE · SHOWING STABLE";
+                }
                 if (userRequested)
                 {
                     _isleyUpdateSnoozedUntil = DateTimeOffset.MinValue;
@@ -83,7 +95,7 @@ public partial class MainWindow
                     _isleyUpdateAnnouncedVersion = release.VersionText;
                     try { SystemSounds.Asterisk.Play(); } catch { }
                     _ = ShowHotkeyToastAsync(
-                        $"ISLEY v{release.VersionText} READY · TOOLS → MORE → UPDATE",
+                        $"ISLEY v{release.VersionText}{channelTag} READY · TOOLS → MORE → UPDATE",
                         true);
                 }
             }
@@ -92,9 +104,17 @@ public partial class MainWindow
                 _availableIsleyRelease = null;
                 _isleyUpdateStatus =
                     $"v{IsleyReleaseLogic.DisplayVersion(CurrentIsleyVersion)} · UP TO DATE";
+                if (fetch.BetaFallback)
+                {
+                    _isleyUpdateStatus += " · BETA CHANNEL UNAVAILABLE · STABLE SHOWN";
+                }
                 if (userRequested)
                 {
-                    await ShowHotkeyToastAsync("ISLEY IS UP TO DATE", true);
+                    await ShowHotkeyToastAsync(
+                        fetch.BetaFallback
+                            ? "ISLEY IS UP TO DATE · BETA CHANNEL UNAVAILABLE"
+                            : "ISLEY IS UP TO DATE",
+                        true);
                 }
             }
         }
@@ -220,14 +240,16 @@ public partial class MainWindow
     private async void PreferBetaUpdatesButton_Click(object sender, RoutedEventArgs e)
     {
         _preferBetaUpdates = !_preferBetaUpdates;
-        // Stable channel remains the only trusted fetch path until a beta manifest ships.
+        // The beta toggle fetches the pinned beta manifest; if none is published
+        // the client falls back to stable and says so in the status line.
         UpdateIsleyUpdatePresentation();
         SaveSettings();
         await ShowHotkeyToastAsync(
             _preferBetaUpdates
-                ? "BETA CHANNEL PREFERENCE ON · STABLE STILL USED UNTIL BETA PUBLISHES"
-                : "BETA CHANNEL PREFERENCE OFF · STABLE ONLY",
+                ? "BETA CHANNEL ON · BETA RELEASES PREFERRED WHEN PUBLISHED"
+                : "BETA CHANNEL OFF · STABLE ONLY",
             true);
+        _ = RefreshIsleyUpdateAsync(userRequested: false);
     }
 
     private async void WhatsNewButton_Click(object sender, RoutedEventArgs e)
@@ -475,6 +497,7 @@ public partial class MainWindow
         {
             var staged = await IsleyUpdateClient.StageAsync(
                 release,
+                CurrentIsleyVersion,
                 progress,
                 _isleyUpdateCancellation.Token);
             _isleyUpdateStatus = "VERIFIED · RESTARTING ISLEY";
@@ -516,6 +539,7 @@ public partial class MainWindow
             return;
         }
 
+        string? pendingBootVersion = null;
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(resultPath));
@@ -526,17 +550,35 @@ public partial class MainWindow
                           && versionValue.ValueKind == JsonValueKind.String
                 ? versionValue.GetString() ?? string.Empty
                 : string.Empty;
-            if (!Regex.IsMatch(version, @"^\d{1,4}\.\d{1,4}\.\d{1,6}$"))
+            if (!IsleyReleaseLogic.IsValidVersionText(version))
             {
                 version = string.Empty;
             }
-            _ = ShowHotkeyToastAsync(
-                success
-                    ? version.Length > 0
-                        ? $"ISLEY UPDATED TO v{version}"
-                        : "ISLEY UPDATED"
-                    : "ISLEY UPDATE DID NOT FINISH · TRY AGAIN",
-                success);
+            if (success && version.Length > 0)
+            {
+                var markerPath = ResolveBootOkMarkerPath();
+                if (IsleyUpdateClient.TryReadBootOkMarker(markerPath, out var confirmedVersion)
+                    && string.Equals(confirmedVersion, version, StringComparison.Ordinal))
+                {
+                    _ = ShowHotkeyToastAsync(
+                        $"ISLEY UPDATED TO v{version} · BOOT CONFIRMED",
+                        true);
+                    return;
+                }
+
+                // Defer the announcement until the app proves a healthy boot;
+                // the result file stays until ConfirmUpdatedBootAsync finishes
+                // so a crash during first boot keeps the pending state honest.
+                pendingBootVersion = version;
+            }
+            else
+            {
+                _ = ShowHotkeyToastAsync(
+                    success
+                        ? "ISLEY UPDATED"
+                        : "ISLEY UPDATE DID NOT FINISH · TRY AGAIN",
+                    success);
+            }
         }
         catch
         {
@@ -544,9 +586,69 @@ public partial class MainWindow
         }
         finally
         {
+            if (pendingBootVersion is null)
+            {
+                try { File.Delete(resultPath); } catch { }
+            }
+        }
+
+        if (pendingBootVersion is not null)
+        {
+            _ = ConfirmUpdatedBootAsync(pendingBootVersion, resultPath);
+        }
+    }
+
+    private async Task ConfirmUpdatedBootAsync(string version, string resultPath)
+    {
+        try
+        {
+            // Healthy steady state: the window finished loading and the
+            // survival/vitals tick is running (it starts right after the first
+            // forced UpdateCoreVitals pass in MainWindow_Loaded).
+            await Task.Delay(TimeSpan.FromSeconds(4));
+            if (!IsLoaded || !_survivalTimerTick.IsEnabled)
+            {
+                _isleyUpdateStatus =
+                    $"UPDATED TO v{version} · BOOT NOT CONFIRMED · WATCH FOR ISSUES";
+                UpdateIsleyUpdatePresentation();
+                await ShowHotkeyToastAsync(
+                    $"ISLEY UPDATED TO v{version} · BOOT NOT CONFIRMED",
+                    false);
+                return;
+            }
+
+            IsleyUpdateClient.WriteBootOkMarker(ResolveBootOkMarkerPath(), version);
+            _isleyUpdateStatus = $"UPDATED TO v{version} · BOOT CONFIRMED";
+            UpdateIsleyUpdatePresentation();
+            await ShowHotkeyToastAsync(
+                $"ISLEY UPDATED TO v{version} · BOOT CONFIRMED",
+                true);
+        }
+        catch
+        {
+            // Boot confirmation is diagnostic; it must never break startup.
+            // Announce the update plainly, without claiming a confirmed boot.
+            try
+            {
+                await ShowHotkeyToastAsync($"ISLEY UPDATED TO v{version}", true);
+            }
+            catch
+            {
+            }
+        }
+        finally
+        {
             try { File.Delete(resultPath); } catch { }
         }
     }
+
+    private static string ResolveBootOkMarkerPath() =>
+        PortableModeEnabled
+            ? Path.Combine(AppContext.BaseDirectory, "IsleyData", "last-boot-ok.json")
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Isley",
+                "last-boot-ok.json");
 
     private object BuildPortableAllowlistedSettings() =>
         new
