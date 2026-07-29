@@ -44,6 +44,9 @@ jobs:
       - name: Voice crypto contracts
         run: node scripts/verify-voice-crypto.cjs
 
+      - name: Mutation-check contract suite
+        run: node scripts/mutation-check-contracts.cjs
+
   verify:
     runs-on: windows-latest
     timeout-minutes: 45
