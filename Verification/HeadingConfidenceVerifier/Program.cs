@@ -62,5 +62,33 @@ Check(HeadingConfidenceLogic.FormatAge(0) == "0s"
       && HeadingConfidenceLogic.FormatAge(double.NaN) == "0s",
     "heading staleness age formatting failed");
 
+// Wave-8 integration contracts: the map compass ribbon and the position-copy
+// surface must consume the same decaying confidence instead of the raw field.
+var root = Directory.GetCurrentDirectory();
+var mapTools = File.ReadAllText(Path.Combine(root, "BurntHud", "MainWindow.MapTools.cs"));
+var xamlCodeBehind = File.ReadAllText(Path.Combine(root, "BurntHud", "MainWindow.xaml.cs"));
+
+Check(xamlCodeBehind.Contains(
+        "private HeadingConfidenceView CurrentHeadingConfidenceView() =>", StringComparison.Ordinal)
+      && xamlCodeBehind.Contains("HeadingConfidenceLogic.Evaluate(", StringComparison.Ordinal),
+    "the shared heading-confidence helper must live in MainWindow.xaml.cs (append-only)");
+
+Check(mapTools.Contains("var headingConfidence = CurrentHeadingConfidenceView();", StringComparison.Ordinal)
+      && mapTools.Contains("headingConfidence.HeldDegrees", StringComparison.Ordinal)
+      && mapTools.Contains("headingConfidence.CompactSuffix", StringComparison.Ordinal)
+      && mapTools.Contains("HeadingConfidenceTier.Stale => 0.65", StringComparison.Ordinal)
+      && mapTools.Contains("HeadingConfidenceTier.Degraded => 0.85", StringComparison.Ordinal),
+    "the map compass must render the held heading with degraded/stale treatment");
+
+Check(mapTools.Contains("heading is HELD at the last good value while the feed is stale", StringComparison.Ordinal)
+      && mapTools.Contains("CopyPositionButton.ToolTip = headingConfidence.Tier switch", StringComparison.Ordinal),
+    "the position-copy surface must announce degraded/stale heading state honestly");
+
+var compassBlockStart = mapTools.IndexOf("private void UpdateNavigationReadout", StringComparison.Ordinal);
+Check(compassBlockStart >= 0
+      && !mapTools[compassBlockStart..mapTools.IndexOf("private void UpdateSoundFinder", compassBlockStart, StringComparison.Ordinal)]
+          .Contains("HeadingText.Text = $\"{ToCardinal(_currentSelfBearing)}", StringComparison.Ordinal),
+    "the compass must never render the raw bearing field again");
+
 Console.WriteLine(
-    "Heading confidence: PASS (no-dot unknown, full/degraded/stale tiers, hold-last with stale indicator, feed-alert staleness, normalization, age copy)");
+    "Heading confidence: PASS (no-dot unknown, full/degraded/stale tiers, hold-last with stale indicator, feed-alert staleness, normalization, age copy, compass + position-copy surface integration)");
