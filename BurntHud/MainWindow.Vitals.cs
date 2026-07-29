@@ -264,6 +264,21 @@ public partial class MainWindow
         var useLiveSnapshot = LiveMapServicesActive && playerSnapshot.LiveFresh;
         var visibleHudSample = CurrentVisibleHudSensorSample();
         var useVisibleHudSample = visibleHudSample is not null;
+        var sensorNow = DateTimeOffset.UtcNow;
+        var sensorConfidence = VisibleHudSensorLogic.ConfidenceTier(
+            visibleHudSample,
+            _visibleHudCalibration.Score,
+            sensorNow);
+        var sensorDotPrefix = VisibleHudSensorLogic.ConfidenceDot(sensorConfidence) is { Length: > 0 } dot
+            ? $"{dot} "
+            : string.Empty;
+        var sensorAgeSeconds = visibleHudSample is { } sensorSample
+            ? Math.Max(0, (sensorNow - sensorSample.CapturedAt).TotalSeconds)
+            : 0;
+        var sensorConfidenceNote = sensorConfidence == SensorConfidenceTier.Unknown
+            ? string.Empty
+            : $" · {VisibleHudSensorLogic.ConfidenceLabel(sensorConfidence)}" +
+              $" · read {CoreVitalsLogic.FormatAge((int)Math.Floor(sensorAgeSeconds))} ago";
         if (!string.IsNullOrEmpty(_woundObservationId)
             && !WoundCheckLogic.IsCurrent(
                 _woundObservationId,
@@ -305,6 +320,7 @@ public partial class MainWindow
             visibleHudSample?.FoodPercent,
             visibleHudSample?.WaterPercent,
             visibleHudSample?.StaminaPercent,
+            sensorConfidence,
             _reportedHealthState,
             _reportedFoodState,
             _reportedWaterState,
@@ -381,7 +397,11 @@ public partial class MainWindow
                 "Visible HUD estimate · foreground The Isle window only · no game memory, packets, input, or stored screenshots.";
         }
         VisibleHudSensorToggleButton.Content = _visibleHudSensorEnabled ? "ON" : "ENABLE";
-        VisibleHudSensorStatusText.Text = _visibleHudSensorStatus;
+        VisibleHudSensorStatusText.Text =
+            sensorDotPrefix.Length > 0
+            && _visibleHudSensorStatus.StartsWith("READING", StringComparison.Ordinal)
+                ? sensorDotPrefix + _visibleHudSensorStatus
+                : _visibleHudSensorStatus;
         SetToggleButtonState(VisibleHudSensorToggleButton, _visibleHudSensorEnabled);
         VisibleHudCalibrateButton.Content = _visibleHudCalibration.Score >= 0.45
             ? $"CALIBRATED · {_visibleHudCalibration.Score:P0}"
@@ -446,36 +466,36 @@ public partial class MainWindow
                 : $"Visible HUD estimate {CoreVitalsLogic.FormatAge(guidance.HealthAgeSeconds)} ago · broad bands only";
             if (!useLiveSnapshot)
             {
-                ReportedHealthButton.Content = $"HP · ~{visible.HealthPercent}%";
-                ReportedFoodButton.Content = $"FOOD · ~{visible.FoodPercent}%";
-                ReportedWaterButton.Content = $"WATER · ~{visible.WaterPercent}%";
+                ReportedHealthButton.Content = $"{sensorDotPrefix}HP · ~{visible.HealthPercent}%";
+                ReportedFoodButton.Content = $"{sensorDotPrefix}FOOD · ~{visible.FoodPercent}%";
+                ReportedWaterButton.Content = $"{sensorDotPrefix}WATER · ~{visible.WaterPercent}%";
             }
-            ReportedStaminaButton.Content = $"STAMINA · ~{visible.StaminaPercent}%";
+            ReportedStaminaButton.Content = $"{sensorDotPrefix}STAMINA · ~{visible.StaminaPercent}%";
         }
 
         ReportedHealthButton.ToolTip = useLiveSnapshot
             ? "Live Isley provider health percentage; click to cycle the manual fallback used when live stats are unavailable"
             : useVisibleHudSample
-            ? "Broad estimate from visible damage-edge pixels; click to set the manual fallback"
+            ? "Broad estimate from visible damage-edge pixels; click to set the manual fallback" + sensorConfidenceNote
             : guidance.HealthFresh
             ? $"Manual in-game EKG band reported {CoreVitalsLogic.FormatAge(guidance.HealthAgeSeconds)} ago; click for the next band"
             : "Cycle Unknown, OK, Hurt, and Critical; each selection is timestamped";
         ReportedFoodButton.ToolTip = useLiveSnapshot
             ? "Live Isley provider hunger percentage; click to cycle the manual fallback used when live stats are unavailable"
             : useVisibleHudSample
-            ? "Broad estimate from the visible food icon; click to set the manual fallback"
+            ? "Broad estimate from the visible food icon; click to set the manual fallback" + sensorConfidenceNote
             : guidance.FoodFresh
             ? $"Manual food band reported {CoreVitalsLogic.FormatAge(guidance.FoodAgeSeconds)} ago; click for the next band"
             : "Cycle Unknown, OK, Low, and Empty; each selection is timestamped";
         ReportedWaterButton.ToolTip = useLiveSnapshot
             ? "Live Isley provider thirst percentage; click to cycle the manual fallback used when live stats are unavailable"
             : useVisibleHudSample
-            ? "Broad estimate from the visible water icon; click to set the manual fallback"
+            ? "Broad estimate from the visible water icon; click to set the manual fallback" + sensorConfidenceNote
             : guidance.WaterFresh
             ? $"Manual water band reported {CoreVitalsLogic.FormatAge(guidance.WaterAgeSeconds)} ago; click for the next band"
             : "Cycle Unknown, OK, Low, and Empty; each selection is timestamped";
         ReportedStaminaButton.ToolTip = useVisibleHudSample
-            ? "Broad estimate from the visible stamina icon; click to set the manual fallback"
+            ? "Broad estimate from the visible stamina icon; click to set the manual fallback" + sensorConfidenceNote
             : guidance.StaminaFresh
             ? $"Manual stamina band reported {CoreVitalsLogic.FormatAge(guidance.StaminaAgeSeconds)} ago; click for the next band"
             : "Cycle Unknown, OK, Low, and Empty; each selection is timestamped";
@@ -568,7 +588,7 @@ public partial class MainWindow
               $"ST {CoreVitalsLogic.ShortLabel(guidance.Stamina)}"
             : string.Empty;
         var visibleCompactLabel = useVisibleHudSample
-            ? $"~HP {visibleHudSample!.Value.HealthPercent} · " +
+            ? $"{sensorDotPrefix}~HP {visibleHudSample!.Value.HealthPercent} · " +
               $"~F {visibleHudSample.Value.FoodPercent} · " +
               $"~W {visibleHudSample.Value.WaterPercent} · " +
               $"~ST {visibleHudSample.Value.StaminaPercent}"
