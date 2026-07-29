@@ -14,6 +14,7 @@ internal sealed class LifeRunHistoryEntry
     public int PrimeConditions { get; set; }
     public int PrimeRequired { get; set; } = 5;
     public string ServerName { get; set; } = "Unspecified server";
+    public int BestCaptureStreak { get; set; }
 }
 
 internal readonly record struct LifeRunHistorySummary(
@@ -35,6 +36,7 @@ internal static class LifeRunHistoryLogic
     internal const string EntombedOutcome = "entombed";
     internal const string EndedOutcome = "ended";
     private const int MaximumDurationSeconds = 30 * 24 * 60 * 60;
+    private const int MaximumCaptureStreakValue = 9999;
 
     internal static LifeRunHistoryEntry CreateEntry(
         DateTimeOffset endedAt,
@@ -119,7 +121,8 @@ internal static class LifeRunHistoryLogic
                 TrackedMilestones = Math.Clamp(source.TrackedMilestones, 0, 6),
                 PrimeConditions = Math.Clamp(source.PrimeConditions, 0, 10),
                 PrimeRequired = Math.Clamp(source.PrimeRequired, 4, 5),
-                ServerName = SanitizeLabel(source.ServerName, "Unspecified server", 40)
+                ServerName = SanitizeLabel(source.ServerName, "Unspecified server", 40),
+                BestCaptureStreak = Math.Clamp(source.BestCaptureStreak, 0, MaximumCaptureStreakValue)
             });
         }
 
@@ -194,9 +197,13 @@ internal static class LifeRunHistoryLogic
         lines.AddRange(normalized.Select((entry, index) =>
         {
             var ended = DateTimeOffset.FromUnixTimeMilliseconds(entry.EndedAtUnixMs).ToLocalTime();
+            var streakSegment = entry.BestCaptureStreak > 0
+                ? $"sync best {Math.Clamp(entry.BestCaptureStreak, 0, MaximumCaptureStreakValue)} | "
+                : string.Empty;
             return $"{index + 1}. {ended:yyyy-MM-dd} | {OutcomeLabel(entry.Outcome)} | " +
                    $"{entry.SpeciesName} | {entry.FinalGrowthPercent}% | {FormatDuration(entry.DurationSeconds)} | " +
                    $"tracked {entry.TrackedMilestones}/6 | Prime {entry.PrimeConditions}/{entry.PrimeRequired} | " +
+                   streakSegment +
                    entry.ServerName;
         }));
         lines.Add("Private manual history; no game memory, automatic death detection, player identity, or coordinates.");
