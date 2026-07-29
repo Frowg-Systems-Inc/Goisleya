@@ -99,3 +99,44 @@ CI-gated merges. Baseline before the wave: CI green, catalog 111, 53 verifiers.
 - Strengthen contracts against the 4 documented false-pass weaknesses.
 - Wave 2 (#6–#9): four P2 QoL batches. Wave 3 (#10–#11): Dependabot/CodeQL/
   secret scanning + updater delta/beta/boot-ok.
+
+## 6. Wave 2 — P2 gameplay QoL (#16–#19, four agents, redistributed by file ownership)
+
+All 13 features delivered; catalog 117 → **124**; verifiers 58 → **61**.
+
+- **Planners (#16):** nest timer toasts (preset thresholds, once-per-timer),
+  schema-versioned unified planner-state store with legacy migration, capture
+  streak stats, server rate presets (Official 1x / Boosted 2x + custom).
+- **Voice & friends (#17):** per-peer volume memory (opaque name-hash keys,
+  LRU 64), true per-peer WebRTC quality surface (getStats RTT/jitter/loss,
+  honest "—" fallback), named friend squads with group presence, right-click
+  map watchlist add (validated bridge, cap 32).
+- **Survival & vitals (#18):** tactical log export (bounded, honest
+  truncation), timer journaling with "expired while away" reconciliation
+  (alarms never re-fire), sensor confidence dots, heading confidence decay
+  (held last-good never jumps). 3 new verifiers + 7 CoreVitals checks.
+- **Chrome & settings (#19):** hotkey conflict detection (blocked + inline
+  highlight), Lite Mode auto-suggest (timer-starvation signal, tappable
+  toast, never auto-enables), layout profiles (≤8 named, programmatic UI),
+  clipboard capture tick, diagnostics bundle export (redacted settings via
+  the shared portable allowlist).
+
+Process: three branches hit missing-using/ctor-arity compile errors (no
+local dotnet); orchestrator patched all four in minutes (System.IO usings,
+JsonElement.EnumerateArray, Thickness arity) and re-ran CI green before
+merge. Conflicts at merge were exactly the predicted shared-file set
+(catalog, nested settings types, ledger) — resolved as unions + ledger 124,
+with dispatch wiring for the planner commands. Final main run: 3/3 jobs
+green at catalog 124.
+
+## 7. Follow-ups queued after Wave 2
+
+- Verifiers for NestTimerAlertLogic, PlannerStateStoreLogic,
+  ServerRatePresetLogic, VoicePeerVolumeLogic, VoicePeerQualityLogic,
+  SteamFriendGroupLogic, EncounterWatchlistLogic, LayoutProfileLogic,
+  LiteModeSuggestLogic, DiagnosticsBundleLogic (coverage doc refresh:
+  VERIFIER-COVERAGE.md is a w1d snapshot).
+- Stop dual-writing legacy LifeRun planner keys after one shipped version.
+- Optional palette entry for tactical-log-export (+1 ledger).
+- Heading decay on the map compass + position-copy surfaces.
+- Wave 3 (#10–#11): Dependabot/CodeQL/secret scanning; updater delta/beta/boot-ok.
