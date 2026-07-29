@@ -1,0 +1,76 @@
+# Isley code style — measured from the existing codebase (wave 5).
+# Settings were chosen so that the vast majority of existing files already
+# comply; this is a guardrail, not a reformat mandate.
+# Facts measured across the repo (216 C# files):
+#   - LF line endings everywhere except *.py / *.html / *.css (CRLF)
+#   - 4-space indent in C#, 2-space in JS/JSON/YAML/XML, no tabs, no BOM
+#   - file-scoped namespaces (139 vs 1), usings outside namespace,
+#     Allman braces, target-typed new() and var in common use
+
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+
+# Tests and site templates are CRLF in the repo today; keep that stable.
+[*.{py,html,css}]
+end_of_line = crlf
+
+[*.cs]
+indent_style = space
+indent_size = 4
+
+# Organize usings is enforced only as a suggestion; several files keep
+# hand-ordered using lists.
+dotnet_sort_system_directives_first = true:suggestion
+dotnet_separate_import_directive_groups = false:suggestion
+csharp_using_directive_placement = outside_namespace:suggestion
+
+# Style preferences are suggestions so `dotnet format --severity warn`
+# (and the CI format-check leg) focuses on whitespace, not taste.
+csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_style_var_for_built_in_types = true:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = true:suggestion
+csharp_style_expression_bodied_methods = false:suggestion
+csharp_style_expression_bodied_constructors = false:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_prefer_braces = true:suggestion
+csharp_prefer_simple_using_statement = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_prefer_top_level_statements = true:suggestion
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_qualification_for_event = false:suggestion
+dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:suggestion
+dotnet_style_readonly_field = true:suggestion
+
+# Naming: _camelCase private fields (dominant convention), PascalCase otherwise.
+dotnet_naming_rule.private_fields_underscore.severity = suggestion
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+
+[*.{csproj,xaml,props,targets,json,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.{js,mjs,cjs}]
+indent_style = space
+indent_size = 2
+
+[*.{ps1,psm1}]
+indent_style = space
+indent_size = 4
+
+[Makefile]
+indent_style = tab

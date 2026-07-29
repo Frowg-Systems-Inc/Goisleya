@@ -99,3 +99,86 @@ jobs:
       - name: Rendered-html tests
         working-directory: download-site
         run: npm test
+
+  # Workstream 5: diff-scoped format gate. dotnet format only needs the SDK
+  # (WPF targets load with EnableWindowsTargeting), so this runs on ubuntu.
+  # Informational for the first rollout: violations never fail the workflow;
+  # the summary step reports what would be flagged. Promote to blocking by
+  # removing continue-on-error once the pre-existing baseline (see
+  # docs/ANALYZER-BASELINE.md note on formatting debt) is burned down.
+  format-check:
+    name: Format check changed C# files (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      EnableWindowsTargeting: "true"
+    steps:
+      - name: Check out Isley
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Compute changed C# files
+        id: changed
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="origin/${{ github.base_ref }}"
+            RANGE="$BASE...HEAD"
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              BEFORE="HEAD~1"
+            fi
+            RANGE="$BEFORE..HEAD"
+          fi
+          echo "Diff range: $RANGE"
+          git diff --name-only --diff-filter=ACMR "$RANGE" -- '*.cs' > changed-cs.txt || true
+          COUNT=$(wc -l < changed-cs.txt | tr -d ' ')
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Changed C# files ($COUNT):"
+          cat changed-cs.txt
+
+      - name: dotnet format verify (changed files only)
+        id: format
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if [ ! -s changed-cs.txt ]; then
+            echo "No C# files changed; skipping format verification."
+            exit 0
+          fi
+          # shellcheck disable=SC2046
+          dotnet format Isley.sln --verify-no-changes --severity warn \
+            --include $(cat changed-cs.txt) 2>&1 | tee format-report.txt
+
+      - name: Summarize format check
+        if: always()
+        run: |
+          {
+            echo "## Format check (informational — does not fail CI)"
+            echo ""
+            if [ ! -s changed-cs.txt ]; then
+              echo "No C# files changed in this range; nothing to check."
+            else
+              FILES=$(wc -l < changed-cs.txt | tr -d ' ')
+              VIOLATIONS=0
+              [ -f format-report.txt ] && VIOLATIONS=$(grep -c ": error WHITESPACE" format-report.txt || true)
+              AFFECTED=0
+              [ -f format-report.txt ] && AFFECTED=$(grep ": error WHITESPACE" format-report.txt | cut -d'(' -f1 | sort -u | wc -l || true)
+              echo "- Changed C# files checked: **$FILES**"
+              echo "- Whitespace violations: **$VIOLATIONS** across **$AFFECTED** file(s)"
+              echo "- Step result: \`${{ steps.format.outcome }}\`"
+              echo ""
+              echo "Violations in files you touched can be fixed locally with:"
+              echo "\`dotnet format Isley.sln --include <files>\` or \`scripts/format-changed.ps1\`."
+              echo "Violations pre-existing elsewhere are baseline debt (see docs/ANALYZER-BASELINE.md)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

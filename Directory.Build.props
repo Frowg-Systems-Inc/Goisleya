@@ -6,5 +6,12 @@
     <Product>Isley</Product>
     <NeutralLanguage>en-US</NeutralLanguage>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <!-- Workstream 5: code-quality gates in baseline mode. Analyzers report
+         warnings only; they never fail the build. Baseline documented in
+         docs/ANALYZER-BASELINE.md. -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>8.0-recommended</AnalysisLevel>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>$(WarningsNotAsErrors)</WarningsNotAsErrors>
   </PropertyGroup>
 </Project>

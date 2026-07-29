@@ -426,7 +426,10 @@ app.MapPost("/api/v1/ingest", async (
 
 app.Run();
 
-public sealed record DeviceTokenRequest(string DeviceCode);
-public sealed record PrivacyUpdateRequest(bool ShareWithSteamFriends);
+namespace Isley.Relay
+{
+    public sealed record DeviceTokenRequest(string DeviceCode);
+    public sealed record PrivacyUpdateRequest(bool ShareWithSteamFriends);
+}
 
 public partial class Program;
