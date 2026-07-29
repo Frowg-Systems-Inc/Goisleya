@@ -163,7 +163,7 @@ test("ships the exact verified Windows archive", async () => {
     {
       manifestVersion: 1,
       channel: "stable",
-      version: "1.3.6",
+      version: "1.4.0",
       downloadUrl:
         "https://isley-download.gmith.chatgpt.site/Isley-Windows-x64.zip",
       sha256,
