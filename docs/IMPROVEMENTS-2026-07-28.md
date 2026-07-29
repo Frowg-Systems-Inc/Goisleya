@@ -159,3 +159,39 @@ Final state: catalog 124 · 61 verifiers · CI 3 jobs + CodeQL · issues #2–#1
 all closed · all 21 PRs merged. Remaining follow-ups are listed in section 7
 (verifier additions for Wave 2 logic files, legacy key retirement, optional
 palette entry, heading decay on compass) — none blocking.
+
+## 9. Plan v2 completion — Waves 4–7 (July 28–29, 2026)
+
+- **Wave 4 (#35):** contract hardening — 4 false-pass weaknesses closed
+  (KDF prefix, GCM tagLength, glare dual-site, vertex-cap boundary); mutation
+  harness 9/9+4 → **13/13 caught, 0 false-passes**; 10 behavioral verifiers
+  for Wave-2 logic; coverage **84/84 (100%)**, 71 verifiers.
+- **Wave 5 (#36–#37):** overlay opts into relay **stream v2** (hello
+  negotiation, validation-first delta apply, v1 byte-identical fallback, kill
+  switch; RelayStreamV2Verifier); quality gates — analyzer baseline (172
+  warnings documented, CA1050 fixed), measured .editorconfig (87% already
+  clean), diff-scoped informational format-check CI, perf-budget harness.
+- **W0 leftovers (#38):** legacy LifeRun planner-key dual-write retired
+  (12 keys; RestoreLifeRun migration untouched; contracts re-aimed at store
+  tokens in the same PR); live-network doc gained stream-v2 + metrics
+  sections. AGENTS.md + branch protection (3 required checks) landed earlier.
+- **Wave 6 (#39):** RUNTIME validation. Live VoiceServer test passes
+  4/4 consecutive on real Windows (3 harness bugs fixed: Urls precedence,
+  Origin allowlist, TCP coalescing — **zero product bugs**). Updater exe
+  drill 4/4 (full/orphan sweep, delta delete-list, traversal refusal,
+  source==target refusal). Packaged 1.3.6 launches healthy; portable mode
+  wrote settings + the Wave-2 planner-state.json live.
+- **Wave 7 (#40):** release engineering — version bump inputs (1.3.6→1.4.0
+  via `minor`), notes-propagation root cause fixed (npm mangling; env-carried
+  now, verbatim), GitHub Releases with SHA256SUMS, delta-chain continuity
+  (downloads latest release zip → auto-delta next run), beta channel
+  (Isley-release-beta.json + prerelease tags). **Released v1.4.0**:
+  tag + client/server zips + checksums; manifest staged to main with
+  verbatim notes (delta asset appears from the NEXT release onward, per
+  design — no previous GitHub Release existed to diff against).
+- Local toolchain: .NET 8 SDK + pytest venv operational on the maintainer
+  machine (dotnet-isley.cmd / pytest-isley.cmd wrappers; -m:1 builds).
+
+Plan v2 complete. Remaining optional follow-ups: whitespace burn-down in
+MainWindow.Voice.cs/Commands.cs, analyzer backlog (CA1859/CA1861/CA1305),
+`_lastServerStatus` dead-state decision, format-check promotion to blocking.
