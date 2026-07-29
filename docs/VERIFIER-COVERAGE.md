@@ -1,6 +1,7 @@
 # Verifier Coverage Gap Analysis
 
-Date: 2026-07-28 (wave w1d, branch `swarm/w1d-testinfra`)
+Date: 2026-07-28 (wave w1d, branch `swarm/w1d-testinfra`; refreshed wave w4,
+branch `swarm/w4-contracts`)
 Method: every `BurntHud/*Logic.cs` file and each service's core classes were
 mapped to `Verification/*` coverage by (a) `Compile Include` entries in
 verifier `.csproj` files (behavioral coverage — the logic is compiled and
@@ -10,20 +11,19 @@ executed).
 
 ## Headline numbers
 
-- **71** `BurntHud/*Logic.cs` files.
-- **66** had behavioral verifier coverage before this change (**93%**).
-- **5** had *zero* coverage (not compiled, not grepped anywhere). All five
-  now have dedicated verifiers (see "Verifiers added this wave"), bringing
-  logic-file coverage to **71/71 (100%)**.
-- **58** verifier projects exist under `Verification/` (53 before this wave
-  + 5 new).
+- **84** `BurntHud/*Logic.cs` files (71 before Wave 2; Wave 2 added 13).
+- **84/84 (100%)** have behavioral verifier coverage: every logic file is
+  compiled into at least one verifier project. Wave w4 closed the last 10
+  uncovered Wave-2 files (see "Verifiers added in wave w4").
+- **71** verifier projects exist under `Verification/` (61 before wave w4
+  + 10 new).
 - Service assemblies (`Isley.Relay`, `Isley.ServerBridge`, `Isley.Telemetry`)
   are partially exercised by `TelemetryPlatformVerifier`; several high-risk
   auth/network classes remain uncovered (below).
 
 ## Risk-ranked gaps
 
-### P1 — uncovered before this wave, now closed
+### P1 — uncovered before wave w1d, now closed
 
 | Logic file | Risk area | Why it mattered | New verifier |
 |---|---|---|---|
@@ -66,7 +66,7 @@ executed).
 - `BurntHud/GatewayResourceLogic.cs` **is** behaviorally covered
   (`GatewayResourceVerifier` compiles it as `GatewayResourceClient`).
 
-## Verifiers added this wave
+## Verifiers added in wave w1d
 
 Five new projects under `Verification/`, following the existing pattern
 (`.csproj` linking the logic file + `Program.cs` with `Check(...)` guards),
@@ -88,6 +88,35 @@ all registered in `Isley.sln` (project entries, Debug/Release configs, and
 5. `PressureCoachVerifier` — once-only gating, consent-roster honesty
    matrix, reassurance copy, unique coach IDs.
 
+## Verifiers added in wave w4
+
+Ten new projects under `Verification/`, same pattern (behavioral — each
+compiles the logic file plus its transitive logic dependencies directly).
+All registered in `Isley.sln` (project entries, Debug/Release configs, and
+`Verification` solution-folder nesting); the full Release build passes with
+0 errors and every new verifier executable passes locally:
+
+1. `NestTimerAlertVerifier` — preset roster, threshold normalization,
+   notify-mask one-shot gating, duration-boundary honesty.
+2. `PlannerStateStoreVerifier` — path resolution, normalization clamps,
+   foreign/newer/legacy schema gating, byte caps, atomic round trips.
+3. `ServerRatePresetVerifier` — built-in preset stability, id/label
+   sanitization, roster composition, cycling, bounded custom creation.
+4. `VoicePeerVolumeVerifier` — pinned `isley-voice-peer-volume-v1` key
+   domain, normalization, duplicate/timestamp handling, LRU pruning.
+5. `VoicePeerQualityVerifier` — severity thresholds, placeholder honesty,
+   suffix composition, measured-stats copy.
+6. `SteamFriendGroupVerifier` — pinned `isley-friend-group-v1` id domain,
+   name normalization, bounded roster/memberships, live-count honesty.
+7. `EncounterWatchlistVerifier` — shared name normalization, cardinal and
+   distance honesty, refresh-on-rewatch, bounded pruning.
+8. `LayoutProfileVerifier` — name normalization and suffixing, size/mode
+   clamping, roster caps and dedup, summary composition.
+9. `LiteModeSuggestVerifier` — starvation sampling, ratio cap, all five
+   suggestion gates, honest offer copy.
+10. `DiagnosticsBundleVerifier` — newest-first selection, per-file and
+    total byte caps, entry-name sanitization, schema stability.
+
 ## Mutation-testing the contract suite
 
 `scripts/mutation-check-contracts.cjs` copies the files each contract
@@ -96,7 +125,8 @@ to a shipped overlay script (`isley-map-controller.js`, `voice.js`,
 `voice-crypto.js`), and spawns the unmodified verifiers against the mutated
 copy. It never touches shipped sources or the contract scripts.
 
-**Result: 9/9 hard mutations caught, 4 documented false-pass weaknesses.**
+**Result: 13/13 mutations caught, 0 false-pass weaknesses remaining**
+(wave w4 closed the four documented below; they are now hard mutations).
 
 Caught (verifier fails as required):
 
@@ -109,52 +139,57 @@ Caught (verifier fails as required):
 7. isley-map-controller.js — controller reuse gate inverted
 8. isley-map-controller.js — no-go polygon vertex cap lowered 12→8
 9. isley-map-controller.js — map interaction token raised 5s→60s
+10. voice-crypto.js — room-key KDF domain prefix rekeyed `-v1:`→`-v9:`
+    (closed in wave w4, see below)
+11. voice-crypto.js — AES-GCM `tagLength` shortened 128→32 at both sites
+    (closed in wave w4, see below)
+12. voice.js — glare ordering inverted at only *one* of two call sites
+    (closed in wave w4, see below)
+13. isley-map-controller.js — no-go vertex cap raised 12→120
+    (closed in wave w4, see below)
 
-### False-pass weaknesses found (probes — do NOT "fix" by weakening contracts)
+### False-pass weaknesses found in wave w1d — all closed in wave w4
 
-1. **KDF domain-separation rekey is invisible.** Rekeying
-   `isley-voice-signal-key-v1:` → `-v9:` in `voice-crypto.js` passes
-   `verify-voice-crypto.cjs`, `verify-overlay-scripts.cjs`, and
-   `verify-controller.cjs`, because every behavioral check is self-consistent
-   within one copy of the code. A compatibility- or rollback-breaking key
-   change would ship green. *Possible future hardening: a fixed test vector
-   (expected key fingerprint) in `verify-voice-crypto.cjs`.*
-2. **AES-GCM tag shortening is invisible.** `tagLength: 128` → `32` (both
-   sites) passes the whole suite — round trips still succeed and the
-   single-bit tamper check still fails at any tag length. *Possible future
-   hardening: assert `tagLength: 128` literally, or attempt a truncated-tag
-   forgery statistically.*
-3. **Duplicated literal hides single-site regressions.** The glare-ordering
-   contract string `localPeerId.localeCompare(remoteId) < 0` appears twice
-   in `voice.js`; inverting only one site still passes the `includes` check.
-   The suite already solves this pattern for the ROOM ENCRYPTION guards with
-   structural regexes; glare ordering has no such structural assertion.
-4. **Numeric-prefix substring weakness.** `noGoAreaMaximumVertices = 12` →
-   `= 120` passes `verify-controller.cjs` because the asserted literal is a
-   prefix of the mutant. *Possible future hardening: assert with a trailing
-   delimiter (e.g. `= 12;`) or a numeric-boundary regex.*
+1. **KDF domain-separation rekey was invisible.** `verify-voice-crypto.cjs`
+   now pins `isley-voice-signal-key-v1:` literally (exactly one occurrence)
+   *and* behaviorally: a key derived independently as
+   SHA-256(domain prefix + normalized secret) must interchange with the
+   module's key in both directions, so any rekey fails even though the
+   mutated copy stays self-consistent.
+2. **AES-GCM tag shortening was invisible.** `verify-voice-crypto.cjs` now
+   pins `tagLength: 128` literally (exactly two occurrences) *and*
+   behaviorally: sealed ciphertext length must equal plaintext + 16 bytes
+   (the 128-bit tag), so a shortened tag fails.
+3. **Duplicated literal hid single-site regressions.**
+   `verify-overlay-scripts.cjs` now pins the glare-ordering guard to
+   exactly two occurrences and asserts each call site structurally
+   (welcome-roster branch and peer-joined branch), mirroring the existing
+   dual-branch sealed-signaling assertions.
+4. **Numeric-prefix substring weakness.** `verify-controller.cjs` now
+   asserts the no-go vertex cap with a trailing-delimiter literal
+   (`noGoAreaMaximumVertices = 12;`) plus a numeric-boundary regex
+   (`\bnoGoAreaMaximumVertices = 12(?!\d)`), so `= 120` can no longer
+   prefix-match.
 
-The mutation harness treats these probes as expected-to-pass; if a future
-contract improvement catches one, the harness fails loudly and the probe
-must be reclassified as a hard mutation.
+The mutation harness still supports `expect: "pass"` probes for future
+audits; none are registered today. If a future contract improvement catches
+a new probe, reclassify it as a hard mutation in the same commit.
 
 ## Wire-in
 
-- `scripts/verify-all.ps1` now runs `scripts\mutation-check-contracts.cjs`
+- `scripts/verify-all.ps1` runs `scripts\mutation-check-contracts.cjs`
   in its node-script step (after `verify-controller.cjs`).
 - **CI note for the orchestrator** (`.github/workflows` is owned by another
   agent this wave): add a step running `node scripts/mutation-check-contracts.cjs`
   in the same job that runs the other node contract scripts, immediately
   after the `verify-controller.cjs` step. Node-only; no dotnet required.
 
-## Environment gaps observed during this wave
+## Environment notes
 
-- `dotnet` is not installed on this machine: the five new verifier projects
-  could not be compiled locally. They mirror existing verifiers exactly
-  (same SDK-style net8.0 csproj shape, same `Check(...)` idiom, same
-  `AppContext.BaseDirectory` root resolution as `IsleyReleaseUpdateVerifier`),
-  but **must be built (`Release`) and run in CI / on a machine with the
-  .NET 8 SDK before merge**.
+- Wave w4 built the full solution locally (`Release`,
+  `-p:EnableWindowsTargeting=true -m:1`, 0 errors) and ran all ten new
+  verifier executables — all pass. The earlier wave's "dotnet not
+  installed" caveat no longer applies on this machine.
 - `pytest` is not installed in the managed Python; `tests/` suites were not
   run (no `tests/` changes were needed this wave).
 - `verify-map-runtime.cjs` / `verify-live-update-runtime.cjs` require a
