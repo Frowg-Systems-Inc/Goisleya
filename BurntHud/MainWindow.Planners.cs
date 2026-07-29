@@ -269,6 +269,13 @@ public partial class MainWindow
         var compactNest = nest.Active
             ? $" · {NestPlannerLogic.CompactSummary(nest)}"
             : string.Empty;
+        var captureStreakLabel = LifeRunLogic.CaptureStreakLabel(_captureStreak);
+        var compactCaptureStreak = captureStreakLabel.Length > 0
+            ? $" · SYNC {captureStreakLabel}"
+            : string.Empty;
+        var fullCaptureStreak = captureStreakLabel.Length > 0
+            ? $" · player sync capture {captureStreakLabel.ToLowerInvariant()} this life"
+            : string.Empty;
         var spawnPlan = CurrentSpawnPlanView();
         var compactSpawnPlan = spawnPlan.IsVisible
             ? $" · {SpawnPlanLogic.CompactSummary(spawnPlan)}"
@@ -323,7 +330,7 @@ public partial class MainWindow
             ? $"RUN {stage} {LifeRunTrackedMilestoneCount()}/6 · SANC {(_lifeRunSanctuaryVisited ? mark : empty)}" +
               $" · DIET {(_lifeRunPerfectDiet ? mark : empty)} · MIG {_lifeRunMigrationVisits}" +
               $" · PAT {_lifeRunPatrolVisits} · NUTR {dietState} {dietNeed}" +
-              $" · PRIME {primeCount}/10 NEED {primeRequired}{compactSpawnPlan}{compactZone}{compactGrowth}{compactElder}{compactMutations}{compactMutationBuild}{compactUnlocks}{compactNest} · {elapsed}"
+              $" · PRIME {primeCount}/10 NEED {primeRequired}{compactSpawnPlan}{compactZone}{compactGrowth}{compactElder}{compactMutations}{compactMutationBuild}{compactUnlocks}{compactNest}{compactCaptureStreak} · {elapsed}"
             : $"Isley life run · stage {stage} · elapsed {elapsed}" +
               $" · Sanctuary {(_lifeRunSanctuaryVisited ? mark : empty)}" +
               $" · perfect diet {(_lifeRunPerfectDiet ? mark : empty)}" +
@@ -346,6 +353,7 @@ public partial class MainWindow
               fullMutations +
               fullMutationBuild +
               fullUnlocks +
+              fullCaptureStreak +
               $" · manual estimate; diet catalog {DietCoachLogic.SpeciesSnapshot}; " +
               "verify current server rules and the fourth mutation slot in game; not automatic certification";
     }
@@ -363,7 +371,8 @@ public partial class MainWindow
             _clearLifeRunHistoryConfirmationPending,
             string.Join(';', _lifeRunHistory.Select(entry =>
                 $"{entry.Id}:{entry.EndedAtUnixMs}:{entry.Outcome}:{entry.DurationSeconds}:" +
-                $"{entry.FinalGrowthPercent}:{entry.TrackedMilestones}:{entry.PrimeConditions}")));
+                $"{entry.FinalGrowthPercent}:{entry.TrackedMilestones}:{entry.PrimeConditions}:" +
+                $"{entry.BestCaptureStreak}")));
         if (!force && string.Equals(signature, _lifeRunHistoryUiSignature, StringComparison.Ordinal))
         {
             return;
@@ -388,6 +397,9 @@ public partial class MainWindow
         }
 
         var summary = LifeRunHistoryLogic.Summarize(_lifeRunHistory);
+        var journalBestStreak = _lifeRunHistory.Count == 0
+            ? 0
+            : _lifeRunHistory.Max(entry => Math.Max(0, entry.BestCaptureStreak));
         LifeRunHistoryJumpButton.Content = summary.Total == 1
             ? "Survival journal · 1 life"
             : $"Survival journal · {summary.Total} lives";
@@ -395,7 +407,8 @@ public partial class MainWindow
             ? "No archived lives · private and local"
             : $"{summary.Total} LIVES · {summary.Survived} SURVIVED · {summary.Entombed} ENTOMBED · " +
               $"AVG {LifeRunHistoryLogic.FormatDuration(summary.AverageDurationSeconds)} · " +
-              $"BEST {summary.BestGrowthPercent}%";
+              $"BEST {summary.BestGrowthPercent}%" +
+              (journalBestStreak > 0 ? $" · SYNC BEST {journalBestStreak}" : string.Empty);
         LifeRunHistoryStatusText.Foreground = summary.Survived > 0 || summary.Entombed > 0
             ? new SolidColorBrush(Color.FromRgb(110, 231, 183))
             : (Brush)FindResource("SecondaryTextBrush");
@@ -485,7 +498,7 @@ public partial class MainWindow
             speciesId = species.Id;
             speciesName = species.Name;
         }
-        return LifeRunHistoryLogic.CreateEntry(
+        var entry = LifeRunHistoryLogic.CreateEntry(
             now,
             speciesId,
             speciesName,
@@ -497,6 +510,8 @@ public partial class MainWindow
             LifeRunPrimeConditionCount(),
             LifeRunPrimeRequiredConditionCount(),
             ServerSessionLogic.DisplayName(_serverSessionProfileId, _serverSessionName));
+        entry.BestCaptureStreak = LifeRunLogic.NormalizeCaptureStreak(_captureStreak).Best;
+        return entry;
     }
 
     private void PrependLifeRunHistory(LifeRunHistoryEntry entry, DateTimeOffset now)
@@ -599,7 +614,7 @@ public partial class MainWindow
             LifeRunHistoryLogic.FormatDuration(entry.DurationSeconds));
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
         await ShowHotkeyToastAsync(
             $"LIFE ARCHIVED · {LifeRunHistoryLogic.OutcomeLabel(entry.Outcome)}",
             entry.Outcome != LifeRunHistoryLogic.DeathOutcome);
@@ -643,7 +658,7 @@ public partial class MainWindow
             _lifeRunHistoryUiSignature = string.Empty;
             AddTacticalEvent("LIFE", "Survival journal cleared", $"{clearedCount} archived lives removed");
             UpdateLifeRunHistory(force: true);
-            SaveSettings();
+            SavePlannerState();
             await ShowHotkeyToastAsync("SURVIVAL JOURNAL CLEARED", true);
             return;
         }
@@ -830,6 +845,10 @@ public partial class MainWindow
 
     private void UpdateLifeRun(bool force = false)
     {
+        EnsurePlannerStateStoreLoaded();
+        var tickNow = DateTimeOffset.UtcNow;
+        UpdateNestTimerAlerts(tickNow);
+        UpdateCaptureStreak(tickNow);
         if (LifeRunHudBorder is null || LifeRunStatusText is null) return;
         UpdateLifeRunHistory(force);
         UpdateMutationUnlockTracker(force);
@@ -868,6 +887,7 @@ public partial class MainWindow
             string.Join(';', _mutationUnlockProgress.Select(item => $"{item.ChallengeId}:{item.Value}")),
             _lifeTransitionPending?.Key ?? string.Empty,
             _newLifeRunConfirmationPending, elapsedMinute,
+            _captureStreak.Current, _captureStreak.Best,
             _streamerMode, _hudDetailModeIndex
         });
         if (!force && string.Equals(signature, _lifeRunUiSignature, StringComparison.Ordinal)) return;
@@ -924,7 +944,10 @@ public partial class MainWindow
         LifeRunStatusText.Text = $"{speciesPrefix}{stage} · {_lifeRunGrowthPercent}% · {elapsedLabel} · {tracked}/6 tracked · next {next.ToLowerInvariant()}" +
                                  (_lifeRunHudVisible
                                      ? _hudDetailModeIndex >= 2 ? " · HUD hidden by Clean view" : string.Empty
-                                     : " · HUD hidden");
+                                     : " · HUD hidden") +
+                                 (LifeRunLogic.CaptureStreakLabel(_captureStreak) is { Length: > 0 } captureStreakLabel
+                                     ? $" · capture {captureStreakLabel.ToLowerInvariant()}"
+                                     : string.Empty);
         LifeRunStatusText.Foreground = (Brush)FindResource("SecondaryTextBrush");
         LifeRunStageButton.Content = $"Stage · {stage}";
         LifeRunMigrationText.Text = $"MIGRATION · {_lifeRunMigrationVisits}/2";
@@ -1232,7 +1255,7 @@ public partial class MainWindow
         AddTacticalEvent("ELDER", "Lineage count corrected", $"Completed Entombs · {_elderEntombCount}");
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void ElderPrimeConfirmedButton_Click(object sender, RoutedEventArgs e)
@@ -1255,7 +1278,7 @@ public partial class MainWindow
             _elderPrimeConfirmed ? "Fourth mutation slot available" : "Manual check reset");
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void ElderConfirmedButton_Click(object sender, RoutedEventArgs e)
@@ -1274,7 +1297,7 @@ public partial class MainWindow
             _elderConfirmed ? "100% · Entomb available" : "Manual check reset");
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async void RecordEntombButton_Click(object sender, RoutedEventArgs e)
@@ -1373,7 +1396,7 @@ public partial class MainWindow
                 $"Lineage {_elderEntombCount + 1} · {inheritedCount} inherited mutation{(inheritedCount == 1 ? string.Empty : "s")}");
             UpdateLifeRun(force: true);
             UpdateTacticalBrief();
-            SaveSettings();
+            SavePlannerState();
             await ShowHotkeyToastAsync(
                 $"LINEAGE {_elderEntombCount + 1} STARTED · {inheritedCount} CARRIED",
                 true);
@@ -1514,7 +1537,7 @@ public partial class MainWindow
         UpdateLifeRun(force: true);
         UpdateNextMove(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void DietSlotButton_Click(object sender, RoutedEventArgs e)
@@ -1594,7 +1617,7 @@ public partial class MainWindow
         UpdateNextMove(force: true);
         UpdateFightCheck(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
         await ShowHotkeyToastAsync($"RUN SPECIES · {bridge.LiveSpeciesName.ToUpperInvariant()}", true);
     }
 
@@ -1751,6 +1774,10 @@ public partial class MainWindow
         GrowthLiveAdoptButton.BorderBrush = bridgeAccent;
         GrowthServerMultiplierButton.Content =
             $"SERVER {FormatGrowthMultiplier(result.ServerMultiplier)}";
+        GrowthServerMultiplierButton.ToolTip = CurrentRatePreset() is { } activeRatePreset
+            ? $"Cycle the server growth multiplier · preset {activeRatePreset.Label} applied " +
+              "(Quick Commands: apply next or save custom presets)"
+            : "Cycle the server growth multiplier · Quick Commands apply or save named rate presets";
         GrowthPauseButton.Content = _growthPaused ? "PAUSED" : "GROWING";
         SetToggleButtonState(GrowthPauseButton, _growthPaused);
         if (_growthPaused)
@@ -1879,7 +1906,7 @@ public partial class MainWindow
         UpdateLifeRun(force: true);
         UpdateNextMove(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async Task AdoptLiveGrowthBridgeAsync(LiveGrowthBridgeView bridge)
@@ -2008,7 +2035,7 @@ public partial class MainWindow
             nest.PartnerReady, nest.SiteReady, nest.DebrisReady, nest.ReservesReady,
             nest.AccessIndex, nest.EggTarget, nest.EggsLaid, nest.EggsHatched,
             nest.YoungRaised, nest.TimerDurationIndex, _clearNestConfirmationPending,
-            _nestAutoHatchGuidanceEnabled, autoHatch.State, autoHatch.Heading,
+            _nestAutoHatchGuidanceEnabled, _nestTimerAlertPresetIndex, autoHatch.State, autoHatch.Heading,
             timerLabel, matchingTimer is not null, _survivalTimers.Count
         });
         if (!force && string.Equals(signature, _nestPlannerUiSignature, StringComparison.Ordinal)) return;
@@ -2099,7 +2126,8 @@ public partial class MainWindow
                 : "START TIMER";
         NestStartTimerButton.ToolTip = string.IsNullOrWhiteSpace(timerLabel)
             ? "A timer is available during Gestate and Incubate"
-            : $"{(matchingTimer is null ? "Start" : "Reset")} a manual {timerLabel.ToLowerInvariant()} timer";
+            : $"{(matchingTimer is null ? "Start" : "Reset")} a manual {timerLabel.ToLowerInvariant()} timer" +
+              $" · countdown alerts {NestTimerAlertLogic.PresetLabel(_nestTimerAlertPresetIndex)}";
         ClearNestPlanButton.Content = _clearNestConfirmationPending ? "CONFIRM RESET" : "RESET CLUTCH";
         ClearNestPlanButton.ToolTip = _clearNestConfirmationPending
             ? "Select again within three seconds to clear this clutch ledger"
@@ -2123,7 +2151,7 @@ public partial class MainWindow
         AddTacticalEvent("NEST", title, detail);
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void NestPlannerStartButton_Click(object sender, RoutedEventArgs e)
@@ -2272,13 +2300,14 @@ public partial class MainWindow
             timer.IsPaused = false;
             timer.Completed = false;
             timer.CompletionNotified = false;
+            _nestTimerAlertNotifiedMasks.Remove(timer.Id);
             _clearTimersConfirmationPending = false;
             _survivalTimerUiSignature = string.Empty;
             _nestPlannerUiSignature = string.Empty;
             AddTacticalEvent("TIMER", "Nest timer reset", $"{label} / {minutes}m");
             UpdateSurvivalTimers(force: true);
             UpdateNestPlannerControls(force: true);
-            SaveSettings();
+            SavePlannerState();
             await ShowHotkeyToastAsync($"{label.ToUpperInvariant()} RESET / {minutes}M", true);
             return;
         }
@@ -2299,6 +2328,7 @@ public partial class MainWindow
             var previous = CurrentNestPlannerSnapshot();
             ApplyNestPlannerSnapshot(new NestPlannerSnapshot(
                 false, 0, false, false, false, false, 0, 2, 0, 0, 0, 1));
+            _nestTimerAlertNotifiedMasks.Clear();
             _clearNestConfirmationPending = false;
             _clearNestConfirmationRevision++;
             _nestPlannerUiSignature = string.Empty;
@@ -2307,7 +2337,7 @@ public partial class MainWindow
                 $"{NestPlannerLogic.Phase(previous).Label} / {previous.EggsHatched} hatched / {previous.YoungRaised} raised");
             UpdateLifeRun(force: true);
             UpdateTacticalBrief();
-            SaveSettings();
+            SavePlannerState();
             await ShowHotkeyToastAsync("NEST PLAN RESET", true);
             return;
         }
@@ -2390,13 +2420,15 @@ public partial class MainWindow
         _survivalTimerUiSignature = string.Empty;
         _newLifeRunConfirmationPending = false;
         _newLifeRunConfirmationRevision++;
+        _captureStreak = new LifeRunCaptureStreak(0, 0);
+        _nestTimerAlertNotifiedMasks.Clear();
         _lifeRunUiSignature = string.Empty;
         if (logEvent) AddTacticalEvent("LIFE", "Life run started", "Manual local tracker · Juvenile");
         UpdateCoreVitals(force: true);
         UpdateSurvivalAssistant(force: true);
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async void LifeRunStartButton_Click(object sender, RoutedEventArgs e)
@@ -2470,7 +2502,7 @@ public partial class MainWindow
         UpdateLifeRun(force: true);
         UpdateNextMove(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async void SpawnPlanActionButton_Click(object sender, RoutedEventArgs e)
@@ -2546,7 +2578,7 @@ public partial class MainWindow
         UpdateLifeRun(force: true);
         UpdateNextMove(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async void ZoneBriefActionButton_Click(object sender, RoutedEventArgs e)
@@ -2585,7 +2617,7 @@ public partial class MainWindow
         UpdateLifeRun(force: true);
         UpdateNextMove(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void LifeRunMilestoneButton_Click(object sender, RoutedEventArgs e)
@@ -2628,7 +2660,7 @@ public partial class MainWindow
         AddTacticalEvent("LIFE", completed ? "Milestone marked" : "Milestone unmarked", label);
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void LifeRunPrimeStateButton_Click(object sender, RoutedEventArgs e)
@@ -2665,7 +2697,7 @@ public partial class MainWindow
         AddTacticalEvent("PRIME", "Manual condition updated", $"{label} · {stateLabel}");
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private MutationUnlockChallenge CurrentMutationUnlockChallenge()
@@ -2722,7 +2754,7 @@ public partial class MainWindow
         if (changed)
         {
             UpdateTacticalBrief();
-            SaveSettings();
+            SavePlannerState();
         }
         return changed;
     }
@@ -2824,7 +2856,7 @@ public partial class MainWindow
         _mutationUnlockResetConfirmationRevision++;
         _mutationUnlockUiSignature = string.Empty;
         UpdateMutationUnlockTracker(force: true);
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void MutationUnlockPreviousButton_Click(object sender, RoutedEventArgs e) =>
@@ -2847,7 +2879,7 @@ public partial class MainWindow
         AddTacticalEvent("MUTATION", "Unlock progress corrected", $"{challenge.Label} · {MutationUnlockLogic.ProgressLabel(challenge, next)}");
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async void MutationUnlockActionButton_Click(object sender, RoutedEventArgs e)
@@ -2892,7 +2924,7 @@ public partial class MainWindow
             warning: completed);
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async void MutationUnlockResetButton_Click(object sender, RoutedEventArgs e)
@@ -2915,7 +2947,7 @@ public partial class MainWindow
             AddTacticalEvent("MUTATION", "Unlock challenge reset", challenge.Label);
             UpdateLifeRun(force: true);
             UpdateTacticalBrief();
-            SaveSettings();
+            SavePlannerState();
             return;
         }
 
@@ -3256,7 +3288,7 @@ public partial class MainWindow
         AddTacticalEvent("MUTATION", "Mutation planned", $"S{slot} · {selected.Name}");
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
         _ = ShowHotkeyToastAsync($"MUTATION SAVED · S{slot}", true);
         return true;
     }
@@ -3280,7 +3312,7 @@ public partial class MainWindow
         AddTacticalEvent("MUTATION", "Build focus changed", MutationBuildLogic.Focuses[_mutationBuildFocusIndex].Label);
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void MutationBuildRecommendationButton_Click(object sender, RoutedEventArgs e)
@@ -3370,7 +3402,7 @@ public partial class MainWindow
             $"S{slot} · {mutation?.Name ?? "Unknown"} · {MutationPlannerLogic.StatusLabel(updated.Status)}");
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async void MutationLoadoutRemoveButton_Click(object sender, RoutedEventArgs e)
@@ -3389,7 +3421,7 @@ public partial class MainWindow
             AddTacticalEvent("MUTATION", "Mutation removed", $"S{slot} · {mutation?.Name ?? "Unknown"}");
             UpdateLifeRun(force: true);
             UpdateTacticalBrief();
-            SaveSettings();
+            SavePlannerState();
             await ShowHotkeyToastAsync("MUTATION REMOVED", true);
             return;
         }
@@ -3454,7 +3486,7 @@ public partial class MainWindow
         AddTacticalEvent("LIFE", "Zone count updated", $"{label} · {value}");
         UpdateLifeRun(force: true);
         UpdateTacticalBrief();
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void LifeRunHudButton_Click(object sender, RoutedEventArgs e)
@@ -3464,7 +3496,7 @@ public partial class MainWindow
         _newLifeRunConfirmationPending = false;
         _lifeRunUiSignature = string.Empty;
         UpdateLifeRun(force: true);
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async void CopyLifeRunButton_Click(object sender, RoutedEventArgs e)
@@ -3534,7 +3566,7 @@ public partial class MainWindow
             }
             _guideUiSignature = string.Empty;
             UpdateFieldGuide(force: true);
-            SaveSettings();
+            SavePlannerState();
         }
     }
 
@@ -3569,7 +3601,7 @@ public partial class MainWindow
         }
         _guideUiSignature = string.Empty;
         UpdateFieldGuide(force: true);
-        SaveSettings();
+        SavePlannerState();
     }
 
     private void GuideFavoriteButton_Click(object sender, RoutedEventArgs e)
@@ -3586,7 +3618,7 @@ public partial class MainWindow
 
         _guideUiSignature = string.Empty;
         UpdateFieldGuide(force: true);
-        SaveSettings();
+        SavePlannerState();
     }
 
     private async void GuideDietCoachButton_Click(object sender, RoutedEventArgs e)
@@ -3601,7 +3633,7 @@ public partial class MainWindow
         _dietSpeciesIndex = FieldGuideLogic.DietSpeciesIndex(_guideSelectedSpeciesId);
         _lifeRunUiSignature = string.Empty;
         UpdateLifeRun(force: true);
-        SaveSettings();
+        SavePlannerState();
         OpenMapToolsAtSection("diet-coach");
         await ShowHotkeyToastAsync("DIET SPECIES UPDATED", true);
     }
@@ -3797,4 +3829,422 @@ public partial class MainWindow
     }
 
     private void OpenFieldGuideButton_Click(object sender, RoutedEventArgs e) => OpenExternalUri(OverlayLinks.FieldGuide);
+
+    // ── Wave 2 planner state: unified store, nest timer alerts, capture streaks, rate presets ──
+
+    private bool _plannerStateStoreLoaded;
+    private bool _plannerStateStoreForeignSchema;
+    private string _plannerStateStoreSignature = string.Empty;
+    private int _nestTimerAlertPresetIndex;
+    private readonly Dictionary<string, int> _nestTimerAlertNotifiedMasks = new(StringComparer.Ordinal);
+    private LifeRunCaptureStreak _captureStreak;
+    private bool _captureStreakBaselineSet;
+    private int _captureStreakLastCount;
+    private uint _captureStreakLastClipboardSequence;
+    private DateTimeOffset _captureStreakLastPersistAt;
+    private string _selectedRatePresetId = string.Empty;
+    private readonly List<ServerRatePreset> _customRatePresets = [];
+
+    // Every planner-state write in this partial goes through here so the legacy
+    // per-planner settings keys (still written by SaveSettings for one version) and the
+    // unified schema-versioned planner-state store stay in step.
+    private void SavePlannerState()
+    {
+        SaveSettings();
+        PersistPlannerStateStore();
+    }
+
+    private PlannerStateDocument CapturePlannerStateDocument()
+    {
+        var nest = CurrentNestPlannerSnapshot();
+        return PlannerStateStoreLogic.Normalize(new PlannerStateDocument
+        {
+            SchemaVersion = PlannerStateDocument.CurrentSchemaVersion,
+            Growth = new PlannerGrowthState
+            {
+                Percent = _lifeRunGrowthPercent,
+                ServerMultiplierIndex = _growthServerMultiplierIndex,
+                Paused = _growthPaused
+            },
+            Nest = new PlannerNestState
+            {
+                Active = nest.Active,
+                PhaseIndex = nest.PhaseIndex,
+                PartnerReady = nest.PartnerReady,
+                SiteReady = nest.SiteReady,
+                DebrisReady = nest.DebrisReady,
+                ReservesReady = nest.ReservesReady,
+                AccessIndex = nest.AccessIndex,
+                EggTarget = nest.EggTarget,
+                EggsLaid = nest.EggsLaid,
+                EggsHatched = nest.EggsHatched,
+                YoungRaised = nest.YoungRaised,
+                TimerDurationIndex = nest.TimerDurationIndex,
+                AutoHatchGuidanceEnabled = _nestAutoHatchGuidanceEnabled,
+                TimerAlertPresetIndex = _nestTimerAlertPresetIndex
+            },
+            Mutation = new PlannerMutationState
+            {
+                Loadout = _mutationLoadout.Select(item => new PlannerMutationItemState
+                {
+                    Slot = item.Slot,
+                    MutationId = item.MutationId,
+                    Status = item.Status
+                }).ToList(),
+                BuildFocusIndex = _mutationBuildFocusIndex,
+                UnlockSelectedIndex = _mutationUnlockSelectedIndex,
+                UnlockProgress = _mutationUnlockProgress.Select(item => new PlannerMutationUnlockState
+                {
+                    ChallengeId = item.ChallengeId,
+                    Value = item.Value
+                }).ToList()
+            },
+            Spawn = new PlannerSpawnState
+            {
+                CoverReady = _spawnPlanCoverReady,
+                ScentChecked = _spawnPlanScentChecked,
+                WaterFound = _spawnPlanWaterFound,
+                FoodFound = _spawnPlanFoodFound
+            },
+            Stats = new PlannerStatsState
+            {
+                CaptureStreakCurrent = _captureStreak.Current,
+                CaptureStreakBest = _captureStreak.Best
+            },
+            RatePresets = new PlannerRatePresetState
+            {
+                SelectedPresetId = _selectedRatePresetId,
+                CustomPresets = _customRatePresets.Select(preset => new PlannerRatePresetItemState
+                {
+                    Id = preset.Id,
+                    Label = preset.Label,
+                    MultiplierIndex = preset.MultiplierIndex
+                }).ToList()
+            }
+        });
+    }
+
+    private void ApplyPlannerStateDocument(PlannerStateDocument document)
+    {
+        var normalized = PlannerStateStoreLogic.Normalize(document);
+        if (_lifeRunActive)
+        {
+            _lifeRunGrowthPercent = normalized.Growth.Percent;
+            _growthServerMultiplierIndex = normalized.Growth.ServerMultiplierIndex;
+            _growthPaused = normalized.Growth.Paused;
+            _lifeRunStageIndex = GrowthPlannerLogic.StageIndex(_lifeRunGrowthPercent);
+            ApplyNestPlannerSnapshot(new NestPlannerSnapshot(
+                normalized.Nest.Active,
+                normalized.Nest.PhaseIndex,
+                normalized.Nest.PartnerReady,
+                normalized.Nest.SiteReady,
+                normalized.Nest.DebrisReady,
+                normalized.Nest.ReservesReady,
+                normalized.Nest.AccessIndex,
+                normalized.Nest.EggTarget,
+                normalized.Nest.EggsLaid,
+                normalized.Nest.EggsHatched,
+                normalized.Nest.YoungRaised,
+                normalized.Nest.TimerDurationIndex));
+            _nestAutoHatchGuidanceEnabled = normalized.Nest.AutoHatchGuidanceEnabled;
+            _spawnPlanCoverReady = normalized.Spawn.CoverReady;
+            _spawnPlanScentChecked = normalized.Spawn.ScentChecked;
+            _spawnPlanWaterFound = normalized.Spawn.WaterFound;
+            _spawnPlanFoodFound = normalized.Spawn.FoodFound;
+            _mutationLoadout.Clear();
+            _mutationLoadout.AddRange(MutationPlannerLogic.NormalizeLoadout(
+                normalized.Mutation.Loadout.Select(item =>
+                    new MutationLoadoutItem(item.Slot, item.MutationId, item.Status))));
+            _mutationBuildFocusIndex = MutationBuildLogic.NormalizeFocusIndex(
+                normalized.Mutation.BuildFocusIndex);
+            _mutationUnlockProgress.Clear();
+            _mutationUnlockProgress.AddRange(MutationUnlockLogic.NormalizeProgress(
+                normalized.Mutation.UnlockProgress.Select(item =>
+                    new MutationUnlockProgress(item.ChallengeId, item.Value))));
+            _mutationUnlockSelectedIndex = MutationUnlockLogic.NormalizeSelectedIndex(
+                normalized.Mutation.UnlockSelectedIndex);
+        }
+
+        _nestTimerAlertPresetIndex = NestTimerAlertLogic.NormalizePresetIndex(
+            normalized.Nest.TimerAlertPresetIndex);
+        _captureStreak = LifeRunLogic.NormalizeCaptureStreak(new LifeRunCaptureStreak(
+            normalized.Stats.CaptureStreakCurrent,
+            normalized.Stats.CaptureStreakBest));
+        _customRatePresets.Clear();
+        _customRatePresets.AddRange(ServerRatePresetLogic.NormalizeCustomPresets(
+            normalized.RatePresets.CustomPresets.Select(item =>
+                new ServerRatePreset(item.Id, item.Label, item.MultiplierIndex))));
+        _selectedRatePresetId = ServerRatePresetLogic.Find(
+            ServerRatePresetLogic.All(_customRatePresets),
+            normalized.RatePresets.SelectedPresetId) is { } selectedPreset
+            ? selectedPreset.Id
+            : string.Empty;
+        _growthPlannerUiSignature = string.Empty;
+        _nestPlannerUiSignature = string.Empty;
+        _spawnPlanUiSignature = string.Empty;
+        _mutationPlannerUiSignature = string.Empty;
+        _mutationUnlockUiSignature = string.Empty;
+        _lifeRunUiSignature = string.Empty;
+    }
+
+    // One-time store load after LoadSettings restored the legacy per-planner keys into
+    // memory. A valid store wins; a missing store migrates from those legacy values and
+    // is written immediately; a newer schema is left untouched for the whole session.
+    private void EnsurePlannerStateStoreLoaded()
+    {
+        if (_plannerStateStoreLoaded)
+        {
+            return;
+        }
+
+        _plannerStateStoreLoaded = true;
+        var path = PlannerStateStoreLogic.ResolvePath(_activeSettingsPath);
+        if (PlannerStateStoreLogic.TryRead(path, out var document, out var foreignSchema)
+            && document is not null)
+        {
+            ApplyPlannerStateDocument(document);
+            _plannerStateStoreSignature = PlannerStateStoreLogic.Serialize(document);
+            return;
+        }
+
+        if (foreignSchema)
+        {
+            _plannerStateStoreForeignSchema = true;
+            AddTacticalEvent(
+                "LIFE",
+                "Planner state store skipped",
+                "Newer schema version · legacy planner keys still applied",
+                warning: true);
+            return;
+        }
+
+        PersistPlannerStateStore(force: true);
+    }
+
+    private void PersistPlannerStateStore(bool force = false)
+    {
+        if (!_plannerStateStoreLoaded || _plannerStateStoreForeignSchema)
+        {
+            return;
+        }
+
+        var document = CapturePlannerStateDocument();
+        var signature = PlannerStateStoreLogic.Serialize(document);
+        if (!force && string.Equals(signature, _plannerStateStoreSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (PlannerStateStoreLogic.TryWrite(
+                PlannerStateStoreLogic.ResolvePath(_activeSettingsPath),
+                document))
+        {
+            _plannerStateStoreSignature = signature;
+        }
+    }
+
+    // Threshold toasts for the nest timer, evaluated on the survival tick before any UI
+    // early-out. Each threshold fires once per timer run; the generic completion
+    // announcement still comes from the survival timer itself.
+    private void UpdateNestTimerAlerts(DateTimeOffset now)
+    {
+        if (_nestTimerAlertNotifiedMasks.Count > 0)
+        {
+            var liveTimerIds = _survivalTimers.Select(timer => timer.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var staleId in _nestTimerAlertNotifiedMasks.Keys
+                         .Where(id => !liveTimerIds.Contains(id))
+                         .ToArray())
+            {
+                _nestTimerAlertNotifiedMasks.Remove(staleId);
+            }
+        }
+
+        var thresholds = NestTimerAlertLogic.Thresholds(_nestTimerAlertPresetIndex);
+        if (thresholds.Count == 0 || !_lifeRunActive || _streamerMode)
+        {
+            return;
+        }
+
+        var nest = CurrentNestPlannerSnapshot();
+        if (!nest.Active)
+        {
+            return;
+        }
+
+        var timerLabel = NestPlannerLogic.TimerLabel(nest);
+        if (string.IsNullOrWhiteSpace(timerLabel))
+        {
+            return;
+        }
+
+        var timer = _survivalTimers.FirstOrDefault(candidate =>
+            string.Equals(candidate.Label, timerLabel, StringComparison.OrdinalIgnoreCase));
+        if (timer is null || timer.IsPaused || timer.Completed)
+        {
+            return;
+        }
+
+        _nestTimerAlertNotifiedMasks.TryGetValue(timer.Id, out var notifiedMask);
+        var hit = NestTimerAlertLogic.Evaluate(
+            timer.DurationSeconds,
+            (timer.EndsAt - now).TotalSeconds,
+            thresholds,
+            notifiedMask);
+        if (hit is not { } alert)
+        {
+            return;
+        }
+
+        _nestTimerAlertNotifiedMasks[timer.Id] = notifiedMask | alert.MaskBit;
+        AddTacticalEvent(
+            "NEST",
+            "Nest timer alert",
+            $"{timerLabel} · {alert.ThresholdMinutes}m remaining",
+            warning: true);
+        _ = ShowHotkeyToastAsync(
+            $"{timerLabel.ToUpperInvariant()} · {alert.ThresholdMinutes}M REMAINING",
+            true);
+    }
+
+    // Player Sync capture streak: counts consecutive successful clipboard captures
+    // (observed via the session capture counter, so both the clipboard poll and the
+    // visible-text read count), resets on a failed capture while the game or overlay is
+    // foreground, and survives restarts through the planner-state store.
+    private void UpdateCaptureStreak(DateTimeOffset now)
+    {
+        var captureCount = _universalCoordinateCaptureCount;
+        var clipboardSequence = NativeMethods.GetClipboardSequenceNumber();
+        if (!_captureStreakBaselineSet)
+        {
+            _captureStreakBaselineSet = true;
+            _captureStreakLastCount = captureCount;
+            _captureStreakLastClipboardSequence = clipboardSequence;
+            return;
+        }
+
+        var streakChanged = false;
+        if (captureCount > _captureStreakLastCount)
+        {
+            _captureStreak = LifeRunLogic.RecordCaptureSuccess(
+                _captureStreak,
+                captureCount - _captureStreakLastCount);
+            _captureStreakLastCount = captureCount;
+            _captureStreakLastClipboardSequence = clipboardSequence;
+            streakChanged = true;
+        }
+        else if (captureCount < _captureStreakLastCount)
+        {
+            // Session counter restarted (overlay relaunch); re-baseline without penalty.
+            _captureStreakLastCount = captureCount;
+            _captureStreakLastClipboardSequence = clipboardSequence;
+        }
+        else if (clipboardSequence != 0
+                 && clipboardSequence != _captureStreakLastClipboardSequence
+                 && _universalCoordinateCaptureEnabled
+                 && !_streamerMode
+                 && GetPlayFocusForeground() is PlayFocusForeground.Game or PlayFocusForeground.Mapper)
+        {
+            _captureStreakLastClipboardSequence = clipboardSequence;
+            if (_captureStreak.Current > 0)
+            {
+                _captureStreak = LifeRunLogic.RecordCaptureFailure(_captureStreak);
+                streakChanged = true;
+            }
+        }
+
+        if (!streakChanged)
+        {
+            return;
+        }
+
+        _lifeRunUiSignature = string.Empty;
+        if (now - _captureStreakLastPersistAt > TimeSpan.FromSeconds(5))
+        {
+            _captureStreakLastPersistAt = now;
+            PersistPlannerStateStore();
+        }
+    }
+
+    private ServerRatePreset? CurrentRatePreset() =>
+        ServerRatePresetLogic.Find(
+            ServerRatePresetLogic.All(_customRatePresets),
+            _selectedRatePresetId) is { } preset
+        && preset.MultiplierIndex == ServerRatePresetLogic.NormalizeMultiplierIndex(
+            _growthServerMultiplierIndex)
+            ? preset
+            : null;
+
+    private async Task CycleNestTimerAlertPresetAsync()
+    {
+        _nestTimerAlertPresetIndex =
+            (_nestTimerAlertPresetIndex + 1) % NestTimerAlertLogic.ThresholdPresets.Length;
+        _nestTimerAlertNotifiedMasks.Clear();
+        _nestPlannerUiSignature = string.Empty;
+        AddTacticalEvent(
+            "NEST",
+            "Nest timer alerts updated",
+            $"Countdown alerts {NestTimerAlertLogic.PresetLabel(_nestTimerAlertPresetIndex)}");
+        UpdateNestPlannerControls(force: true);
+        SavePlannerState();
+        await ShowHotkeyToastAsync(
+            $"NEST ALERTS · {NestTimerAlertLogic.PresetLabel(_nestTimerAlertPresetIndex)}",
+            true);
+    }
+
+    private async Task ApplyNextServerRatePresetAsync()
+    {
+        if (!_lifeRunActive || _streamerMode)
+        {
+            await ShowHotkeyToastAsync("START A LIFE RUN TO APPLY A RATE PRESET", false);
+            return;
+        }
+
+        var presets = ServerRatePresetLogic.All(_customRatePresets);
+        var next = ServerRatePresetLogic.Next(presets, _selectedRatePresetId, _growthServerMultiplierIndex);
+        _selectedRatePresetId = next.Id;
+        _growthServerMultiplierIndex = next.MultiplierIndex;
+        if (CommunitySessionActive)
+        {
+            SyncCurrentCommunityServerProfile(includeGrowthRate: true);
+            UpdateServerSessionPresentation();
+        }
+
+        CommitGrowthClockChange(
+            "Server rate preset applied",
+            $"{next.Label} / {GrowthPlannerLogic.ServerMultipliers[next.MultiplierIndex]:0.#}x");
+        await ShowHotkeyToastAsync($"RATE PRESET · {next.Label}", true);
+    }
+
+    private async Task SaveCustomServerRatePresetAsync()
+    {
+        if (!_lifeRunActive || _streamerMode)
+        {
+            await ShowHotkeyToastAsync("START A LIFE RUN TO SAVE A RATE PRESET", false);
+            return;
+        }
+
+        var result = ServerRatePresetLogic.TryCreateCustom(
+            _growthServerMultiplierIndex,
+            _customRatePresets,
+            out var preset);
+        if (result != ServerRatePresetSaveResult.Created)
+        {
+            await ShowHotkeyToastAsync(
+                result == ServerRatePresetSaveResult.AlreadyTracked
+                    ? "RATE ALREADY HAS A PRESET"
+                    : $"CUSTOM PRESET LIMIT · {ServerRatePresetLogic.MaximumCustomPresets}",
+                false);
+            return;
+        }
+
+        _customRatePresets.Add(preset);
+        _selectedRatePresetId = preset.Id;
+        _growthPlannerUiSignature = string.Empty;
+        AddTacticalEvent(
+            "GROWTH",
+            "Custom server rate preset saved",
+            $"{preset.Label} · {_customRatePresets.Count}/{ServerRatePresetLogic.MaximumCustomPresets} custom");
+        SavePlannerState();
+        await ShowHotkeyToastAsync($"PRESET SAVED · {preset.Label}", true);
+    }
 }

@@ -129,4 +129,13 @@ internal static class ServerSessionLogic
 
     internal static string BriefLabel(string? profileId, string? customName) =>
         DisplayName(profileId, customName).ToUpperInvariant();
+
+    // Named server-rate preset suggested by each session profile. Planners resolve the
+    // returned id through ServerRatePresetLogic; an empty id means the profile leaves
+    // the rate to the player. Kept dependency-free so this file still compiles alone.
+    internal static string SuggestedRatePresetId(string? id) => NormalizeProfileId(id) switch
+    {
+        OfficialId => "official-1x",
+        _ => string.Empty
+    };
 }

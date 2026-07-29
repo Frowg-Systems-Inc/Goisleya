@@ -414,16 +414,19 @@ public partial class MainWindow
         }
 
         var growthMultiplierIndex = CurrentServerGrowthMultiplierIndex();
+        var ratePresetSuffix = CurrentRatePreset() is { } sessionRatePreset
+            ? $" · preset {sessionRatePreset.Label}"
+            : string.Empty;
         ServerSessionGrowthButton.Content = growthMultiplierIndex >= 0
             ? CommunitySessionActive
                 ? $"SERVER RATE {GrowthPlannerLogic.ServerMultipliers[growthMultiplierIndex]:0.#}X"
                 : $"USE {GrowthPlannerLogic.ServerMultipliers[growthMultiplierIndex]:0.#}X GROWTH"
             : "SET GROWTH RATE";
-        ServerSessionGrowthButton.ToolTip = growthMultiplierIndex >= 0
+        ServerSessionGrowthButton.ToolTip = (growthMultiplierIndex >= 0
             ? CommunitySessionActive
                 ? "Apply this saved server's growth multiplier to the current Growth Clock"
                 : "Apply this profile's suggested multiplier to the current Growth Clock"
-            : "Open Growth Clock and choose the multiplier advertised by this server";
+            : "Open Growth Clock and choose the multiplier advertised by this server") + ratePresetSuffix;
         ServerSessionLiveMapButton.Visibility = live ? Visibility.Collapsed : Visibility.Visible;
         LiveMapServerSectionLabel.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
         ServerStatusCard.Visibility = live ? Visibility.Visible : Visibility.Collapsed;

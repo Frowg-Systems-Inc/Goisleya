@@ -903,7 +903,10 @@ public partial class MainWindow : Window
         new("map-routes-import", "Import shared route", "Start a route from a pack member's share code on your clipboard", "route share code import paste start map pack receive plan"),
         new("map-nogo-share", "Copy no-go share code", "Copy a share code of your no-go areas to send to your pack", "no-go area share code copy export map pack send zone avoid"),
         new("map-nogo-import", "Import shared no-go areas", "Add no-go areas from a pack member's share code on your clipboard", "no-go area share code import paste add map pack receive zone"),
-        new("map-route-replan", "Toggle route auto-replan", "Re-plan the active route from your position when you stray off it", "route auto replan deviation off course toggle reroute stray")
+        new("map-route-replan", "Toggle route auto-replan", "Re-plan the active route from your position when you stray off it", "route auto replan deviation off course toggle reroute stray"),
+        new("nest-timer-alerts", "Cycle nest timer alerts", "Choose countdown warnings (10/5/1, 5/1 minutes, or off) that toast before nest timer events", "nest timer alert alerts threshold warning countdown gestation incubation hatch toast reminder 10 5 1 minutes"),
+        new("server-rate-preset-apply", "Apply next server rate preset", "Apply the next named growth-rate preset (Official 1x, Boosted 2x, or a saved custom rate) to the Growth Clock", "server rate multiplier preset growth clock apply community official boosted custom cycle 1x 2x"),
+        new("server-rate-preset-save", "Save custom server rate preset", "Save the current Growth Clock server multiplier as a named custom rate preset", "server rate multiplier preset save custom growth clock community store")
     ];
 
     private sealed class PlaceSearchSuggestion

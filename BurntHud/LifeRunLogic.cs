@@ -13,8 +13,43 @@ internal readonly record struct LifeRunSnapshot(
     int SpasmStatus,
     int SpeciesClass);
 
+internal readonly record struct LifeRunCaptureStreak(int Current, int Best);
+
 internal static class LifeRunLogic
 {
+    internal const int MaximumCaptureStreak = 9999;
+
+    internal static LifeRunCaptureStreak NormalizeCaptureStreak(LifeRunCaptureStreak streak)
+    {
+        var current = Math.Clamp(streak.Current, 0, MaximumCaptureStreak);
+        var best = Math.Clamp(Math.Max(streak.Best, current), 0, MaximumCaptureStreak);
+        return new LifeRunCaptureStreak(current, best);
+    }
+
+    internal static LifeRunCaptureStreak RecordCaptureSuccess(LifeRunCaptureStreak streak, int successes = 1)
+    {
+        var normalized = NormalizeCaptureStreak(streak);
+        var current = Math.Clamp(
+            normalized.Current + Math.Clamp(successes, 1, 100),
+            0,
+            MaximumCaptureStreak);
+        return new LifeRunCaptureStreak(current, Math.Max(normalized.Best, current));
+    }
+
+    internal static LifeRunCaptureStreak RecordCaptureFailure(LifeRunCaptureStreak streak)
+    {
+        var normalized = NormalizeCaptureStreak(streak);
+        return new LifeRunCaptureStreak(0, normalized.Best);
+    }
+
+    internal static string CaptureStreakLabel(LifeRunCaptureStreak streak)
+    {
+        var normalized = NormalizeCaptureStreak(streak);
+        return normalized.Best <= 0
+            ? string.Empty
+            : $"STREAK {normalized.Current} · BEST {normalized.Best}";
+    }
+
     internal static int TrackedMilestoneCount(LifeRunSnapshot run) =>
         (run.SanctuaryVisited ? 1 : 0) +
         (run.PerfectDiet ? 1 : 0) +
