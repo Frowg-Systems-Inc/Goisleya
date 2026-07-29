@@ -2414,7 +2414,7 @@ public partial class MainWindow
         var border = new Border
         {
             Margin = new Thickness(0, 0, 0, 5),
-            Padding = new Thickness(8, 6),
+            Padding = new Thickness(8, 6, 8, 6),
             CornerRadius = new CornerRadius(8),
             Background = new SolidColorBrush(Color.FromArgb(0x70, 0x14, 0x1B, 0x24)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(0x55, 0x64, 0x74, 0x8B)),
