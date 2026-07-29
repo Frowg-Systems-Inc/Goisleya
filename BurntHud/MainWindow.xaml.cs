@@ -906,7 +906,11 @@ public partial class MainWindow : Window
         new("map-route-replan", "Toggle route auto-replan", "Re-plan the active route from your position when you stray off it", "route auto replan deviation off course toggle reroute stray"),
         new("nest-timer-alerts", "Cycle nest timer alerts", "Choose countdown warnings (10/5/1, 5/1 minutes, or off) that toast before nest timer events", "nest timer alert alerts threshold warning countdown gestation incubation hatch toast reminder 10 5 1 minutes"),
         new("server-rate-preset-apply", "Apply next server rate preset", "Apply the next named growth-rate preset (Official 1x, Boosted 2x, or a saved custom rate) to the Growth Clock", "server rate multiplier preset growth clock apply community official boosted custom cycle 1x 2x"),
-        new("server-rate-preset-save", "Save custom server rate preset", "Save the current Growth Clock server multiplier as a named custom rate preset", "server rate multiplier preset save custom growth clock community store")
+        new("server-rate-preset-save", "Save custom server rate preset", "Save the current Growth Clock server multiplier as a named custom rate preset", "server rate multiplier preset save custom growth clock community store"),
+        new("layout-profiles", "Open layout profiles", "Save, apply, and manage named HUD layout configurations", "layout profiles hud save apply restore window size dock visibility surfaces preset workspace"),
+        new("layout-profile-save", "Save current layout profile", "Capture the current dock, window size, and HUD visibility into a named layout profile", "layout profile save capture snapshot current hud window dock visibility surfaces"),
+        new("capture-sound", "Toggle capture sound", "Play or mute the subtle tick when a clipboard position capture succeeds", "clipboard capture sound tick audio feedback player sync coordinates position"),
+        new("diagnostics-export", "Export diagnostics bundle", "Save a support zip with crash logs, redacted settings, and environment info", "diagnostics export support logs crash zip report bug feedback troubleshoot bundle")
     ];
 
     private sealed class PlaceSearchSuggestion
@@ -1225,6 +1229,8 @@ public partial class MainWindow : Window
         public bool PressureCoachPreStreamSeen { get; set; }
         public string WhatsNewVersionSeen { get; set; } = string.Empty;
         public bool PreferBetaUpdates { get; set; }
+        public bool ClipboardCaptureSoundEnabled { get; set; } = true;
+        public List<HudLayoutProfileSettings> HudLayoutProfiles { get; set; } = [];
     }
 
     public MainWindow()
@@ -1698,6 +1704,23 @@ public partial class MainWindow : Window
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
         public List<VoicePeerVolumeEntry> VoicePeerVolumes { get; set; } = [];
         public List<SteamFriendGroupEntry> SteamFriendGroups { get; set; } = [];
+    }
+
+    private sealed class HudLayoutProfileSettings
+    {
+        public string Name { get; set; } = string.Empty;
+        public bool HudDockMirrored { get; set; }
+        public bool Expanded { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public int HudDetailModeIndex { get; set; }
+        public bool NavigationHudVisible { get; set; } = true;
+        public bool VitalsHudVisible { get; set; } = true;
+        public bool SurvivalHudVisible { get; set; } = true;
+        public bool AlertHudVisible { get; set; } = true;
+        public bool QuickKeysHudVisible { get; set; }
+        public int QuickKeysModeIndex { get; set; }
+        public long SavedAtUnixMs { get; set; }
     }
 
 }

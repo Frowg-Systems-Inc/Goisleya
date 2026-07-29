@@ -1092,6 +1092,28 @@ public partial class MainWindow
                     applied);
                 break;
             }
+            case "layout-profiles":
+                OpenLayoutProfilesSection();
+                await ShowHotkeyToastAsync("LAYOUT PROFILES OPEN", true);
+                break;
+            case "layout-profile-save":
+                SaveLayoutProfileFromCommand();
+                break;
+            case "capture-sound":
+                await ToggleCaptureSoundAsync();
+                break;
+            case "diagnostics-export":
+                await ExportDiagnosticsBundleAsync();
+                break;
+            case "nest-timer-alerts":
+                await CycleNestTimerAlertPresetAsync();
+                break;
+            case "server-rate-preset-apply":
+                await ApplyNextServerRatePresetAsync();
+                break;
+            case "server-rate-preset-save":
+                await SaveCustomServerRatePresetAsync();
+                break;
         }
     }
 

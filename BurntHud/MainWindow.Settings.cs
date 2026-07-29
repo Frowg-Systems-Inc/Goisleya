@@ -115,6 +115,8 @@ public partial class MainWindow
                 0,
                 settings.OnboardingTutorialVersionCompleted);
             _hudDockMirrored = settings.HudDockMirrored;
+            _clipboardCaptureSoundEnabled = settings.ClipboardCaptureSoundEnabled;
+            RestoreLayoutProfiles(settings.HudLayoutProfiles);
             _zoomPresetIndex = Math.Clamp(settings.ZoomPresetIndex, 0, _zoomPresets.Length - 1);
             _trailDurationIndex = Math.Clamp(settings.TrailDurationIndex, 0, _trailDurations.Length - 1);
             _markerStyleIndex = Math.Clamp(settings.MarkerStyleIndex, 0, _markerStyleModes.Length - 1);
@@ -611,6 +613,23 @@ public partial class MainWindow
             AutomaticUpdatesEnabled = _automaticUpdatesEnabled,
             OnboardingTutorialVersionCompleted = _onboardingTutorialVersionCompleted,
             HudDockMirrored = _hudDockMirrored,
+            ClipboardCaptureSoundEnabled = _clipboardCaptureSoundEnabled,
+            HudLayoutProfiles = _hudLayoutProfiles.Select(profile => new HudLayoutProfileSettings
+            {
+                Name = profile.Name,
+                HudDockMirrored = profile.HudDockMirrored,
+                Expanded = profile.Expanded,
+                Width = profile.Width,
+                Height = profile.Height,
+                HudDetailModeIndex = profile.HudDetailModeIndex,
+                NavigationHudVisible = profile.NavigationHudVisible,
+                VitalsHudVisible = profile.VitalsHudVisible,
+                SurvivalHudVisible = profile.SurvivalHudVisible,
+                AlertHudVisible = profile.AlertHudVisible,
+                QuickKeysHudVisible = profile.QuickKeysHudVisible,
+                QuickKeysModeIndex = profile.QuickKeysModeIndex,
+                SavedAtUnixMs = profile.SavedAtUnixMs
+            }).ToList(),
             ZoomPresetIndex = _zoomPresetIndex,
             TrailDurationIndex = _trailDurationIndex,
             ArrivalAlertIndex = _arrivalAlertIndex,
