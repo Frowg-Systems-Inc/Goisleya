@@ -49,6 +49,7 @@ class LiveWebSocket:
 
     def __init__(self, sock: socket.socket):
         self._sock = sock
+        self._buf = bytearray()
 
     @classmethod
     def connect(cls, url: str, timeout: float = 10.0) -> "LiveWebSocket":
@@ -68,6 +69,9 @@ class LiveWebSocket:
             "Connection: Upgrade\r\n"
             f"Sec-WebSocket-Key: {key}\r\n"
             "Sec-WebSocket-Version: 13\r\n"
+            # The server's allowlist (appsettings AllowedOrigins) rejects
+            # origin-less upgrades when non-empty; send the default allowed one.
+            "Origin: https://isley.voice.local\r\n"
             "\r\n"
         )
         sock.sendall(request.encode("ascii"))
@@ -78,11 +82,16 @@ class LiveWebSocket:
             if not chunk:
                 raise ConnectionError("VoiceServer closed during handshake.")
             response += chunk
-        head = response.split(b"\r\n\r\n", 1)[0].decode("latin-1")
-        status_line = head.splitlines()[0]
+        head, _, remainder = response.partition(b"\r\n\r\n")
+        status_line = head.decode("latin-1").splitlines()[0]
         if " 101" not in status_line:
             raise ConnectionError(f"VoiceServer refused the upgrade: {status_line}")
-        return cls(sock)
+        # Bytes past the header terminator are already WebSocket frames
+        # (the server may flush 101 + first frame in one TCP segment) —
+        # carry them into the frame reader instead of discarding them.
+        client = cls(sock)
+        client._buf = bytearray(remainder)
+        return client
 
     def close(self) -> None:
         try:
@@ -183,6 +192,10 @@ class LiveWebSocket:
 
     def _read_exact(self, count: int):
         data = b""
+        if self._buf:
+            take = self._buf[:count]
+            del self._buf[:count]
+            data += bytes(take)
         while len(data) < count:
             chunk = self._sock.recv(count - len(data))
             if not chunk:
@@ -229,7 +242,10 @@ def voice_server():
     environment = dict(os.environ)
     environment.update(
         {
-            "ASPNETCORE_URLS": f"http://127.0.0.1:{port}",
+            # appsettings.json "Urls" wins over ASPNETCORE_URLS (config beats
+            # host env); the plain "Urls" env var lands in app config AFTER
+            # appsettings.json, so it is the override that actually works.
+            "Urls": f"http://127.0.0.1:{port}",
             "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
             "DOTNET_NOLOGO": "1",
             "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
