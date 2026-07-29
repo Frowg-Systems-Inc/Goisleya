@@ -139,7 +139,7 @@ Check(source.Contains("if (spawnPlan.IsVisible && !spawnPlan.IsComplete)", Strin
       && source.Contains("UpdateNextMove(force: true);", StringComparison.Ordinal),
     "Next Move or compact HUD integration failed");
 Check(source.Contains("public bool SpawnCoverReady { get; set; }", StringComparison.Ordinal)
-      && source.Contains("SpawnCoverReady = _spawnPlanCoverReady", StringComparison.Ordinal)
+      && source.Contains("CoverReady = _spawnPlanCoverReady", StringComparison.Ordinal)
       && source.Contains("saved?.SpawnCoverReady == true", StringComparison.Ordinal)
       && source.Split("_spawnPlanCoverReady = false;").Length - 1 == 2,
     "Per-life persistence or reset failed");
