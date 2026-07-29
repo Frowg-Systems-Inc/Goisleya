@@ -24,7 +24,7 @@ jobs:
       DOTNET_NOLOGO: "1"
     steps:
       - name: Check out Isley
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out Isley
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
