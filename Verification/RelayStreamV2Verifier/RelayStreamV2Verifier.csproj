@@ -1,20 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyName>TelemetryPlatformVerifier</AssemblyName>
+    <AssemblyName>RelayStreamV2Verifier</AssemblyName>
   </PropertyGroup>
-
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\Isley.Telemetry\Isley.Telemetry.csproj" />
-    <ProjectReference Include="..\..\Isley.Relay\Isley.Relay.csproj" />
-    <ProjectReference Include="..\..\Isley.ServerBridge\Isley.ServerBridge.csproj" />
-    <Compile Include="..\..\BurntHud\IsleyRelayClient.cs" Link="IsleyRelayClient.cs" />
     <Compile Include="..\..\BurntHud\IsleyRelayStreamLogic.cs" Link="IsleyRelayStreamLogic.cs" />
   </ItemGroup>
-
 </Project>
