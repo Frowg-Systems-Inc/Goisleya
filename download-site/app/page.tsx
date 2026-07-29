@@ -1,11 +1,11 @@
 const DOWNLOAD_PATH = "/Isley-Windows-x64.zip";
 const SERVER_KIT_PATH = "/Isley-Server-Network.zip";
 const KOFI_PATH = "https://ko-fi.com/theoneboundinink";
-const ARCHIVE_SIZE = "8.55 MB";
-const RELEASE_VERSION = "1.3.6";
-const RELEASE_DATE = "July 26, 2026";
+const ARCHIVE_SIZE = "9.02 MB";
+const RELEASE_VERSION = "1.4.0";
+const RELEASE_DATE = "July 29, 2026";
 const SHA256 =
-  "2E335F99A7FF4BC0D0D20EDE34F8CC271F724502AB885D5A8365EB3DC7D23EC9";
+  "393C1C79C6B2F3C6E4AC4CCFC94245139008D4BCE1AEBB5836726B9140684566";
 
 export default function Home() {
   return (
