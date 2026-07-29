@@ -910,7 +910,8 @@ public partial class MainWindow : Window
         new("layout-profiles", "Open layout profiles", "Save, apply, and manage named HUD layout configurations", "layout profiles hud save apply restore window size dock visibility surfaces preset workspace"),
         new("layout-profile-save", "Save current layout profile", "Capture the current dock, window size, and HUD visibility into a named layout profile", "layout profile save capture snapshot current hud window dock visibility surfaces"),
         new("capture-sound", "Toggle capture sound", "Play or mute the subtle tick when a clipboard position capture succeeds", "clipboard capture sound tick audio feedback player sync coordinates position"),
-        new("diagnostics-export", "Export diagnostics bundle", "Save a support zip with crash logs, redacted settings, and environment info", "diagnostics export support logs crash zip report bug feedback troubleshoot bundle")
+        new("diagnostics-export", "Export diagnostics bundle", "Save a support zip with crash logs, redacted settings, and environment info", "diagnostics export support logs crash zip report bug feedback troubleshoot bundle"),
+        new("tactical-log-export", "Export tactical log", "Save this session's routes, timers, warnings, and connection changes as a bounded text file", "tactical log export save file events history timeline session routes timers warnings download txt")
     ];
 
     private sealed class PlaceSearchSuggestion
@@ -1727,5 +1728,16 @@ public partial class MainWindow : Window
         public int QuickKeysModeIndex { get; set; }
         public long SavedAtUnixMs { get; set; }
     }
+
+    // Wave-8 (append-only per AGENTS.md): one shared heading-confidence view for
+    // the map compass ribbon and the position-copy surface. The held value is
+    // always the last good authorized heading — it never jumps — and only the
+    // degraded/stale treatment changes as the feed ages.
+    private HeadingConfidenceView CurrentHeadingConfidenceView() =>
+        HeadingConfidenceLogic.Evaluate(
+            _markerAvailable && _currentSelfX is not null && _currentSelfY is not null,
+            _currentSelfBearing,
+            _currentMarkerFreshnessAgeMs,
+            _staleAlertActive);
 
 }

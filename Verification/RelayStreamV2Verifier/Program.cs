@@ -573,14 +573,14 @@ Check(Source("Isley.Telemetry", "TelemetryContracts.cs").Contains(
           "ViewerTelemetryDeltaBuilder", StringComparison.Ordinal),
     "The locked server stream contract drifted.");
 
-// Quick Commands ledger stays at 124 (no new commands for stream v2).
+// Quick Commands ledger stays at 125 (no new commands for stream v2).
 var windowSource = Source("BurntHud", "MainWindow.xaml.cs");
 var catalogMatch = Regex.Match(
     windowSource,
     @"CommandPaletteActions\s*=\s*\[([\s\S]*?)\n\s*\];");
 Check(catalogMatch.Success
-      && Regex.Matches(catalogMatch.Groups[1].Value, @"new\(""").Count == 124,
-    "Quick Commands catalog count drifted from 124.");
+      && Regex.Matches(catalogMatch.Groups[1].Value, @"new\(""").Count == 125,
+    "Quick Commands catalog count drifted from 125.");
 
 Console.WriteLine(
     "Relay stream v2 verification passed: hello negotiation shape and clamps, "
@@ -588,4 +588,4 @@ Console.WriteLine(
     + "scalar overwrite, chained and gapped sequences, keyframe reset, renegotiation "
     + "keyframe wait, v1 fallback and clamped-delta resync, malformed-delta safety "
     + "with untouched state, roster bounds, unknown-version update-required state, "
-    + "client/settings wiring, locked server contract, and the 124-command ledger.");
+    + "client/settings wiring, locked server contract, and the 125-command ledger.");

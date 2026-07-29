@@ -1683,7 +1683,7 @@ const commandCatalogMatch = source.match(/CommandPaletteActions\s*=\s*\[([\s\S]*
 const commandCatalogCount = commandCatalogMatch
   ? (commandCatalogMatch[1].match(/new\("/g) || []).length
   : -1;
-if (commandCatalogCount !== 124) {
+if (commandCatalogCount !== 125) {
   throw new Error(`Quick Commands catalog count drifted: ${commandCatalogCount}`);
 }
 const quickKeysSurface = `${source}\n${xamlSource}\n${quickKeysLogicSource}\n${overlayLinksSource}`;
@@ -1788,7 +1788,7 @@ const requiredNextMoveContracts = [
   ['critical Core Vitals precedence', 'raw.CoreVitalsUrgency >= 3'],
   ['closing contact escalation', 'string.Equals(encounterMotion, "closing"'],
   ['Live Map contact boundary', 'raw.LiveMapServicesActive && (closeContact || closingContact)'],
-  ['direct Escape Route handoff', '"escape-route",\n                "PLAN ESCAPE"'],
+  ['direct Escape Route handoff', '"escape-route",\n                    "PLAN ESCAPE"'],
   ['self-position contact fallback', '"OPEN CONTACTS",\n                    950'],
   ['pack boundary escalation', 'raw.PackSpreadAlertActive'],
   ['moving-away route escalation', 'string.Equals(waypointTrend, "away"'],

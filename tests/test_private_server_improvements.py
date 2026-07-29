@@ -35,7 +35,7 @@ def test_private_server_command_catalog_and_dispatch_are_consistent():
     command_start = MAIN.index("CommandPaletteActions =")
     command_end = MAIN.index("] ;".replace(" ", ""), command_start)
     command_block = MAIN[command_start:command_end]
-    assert command_block.count('new("') == 124
+    assert command_block.count('new("') == 125
     assert command_block.count('new("private-server-connect"') == 1
     dispatch = method_body(
         COMMANDS,
@@ -43,7 +43,7 @@ def test_private_server_command_catalog_and_dispatch_are_consistent():
     )
     assert dispatch.count('case "private-server-connect":') == 1
     assert "await ConnectPrivateServerFromClipboardAsync();" in dispatch
-    assert "commandCatalogCount !== 124" in (
+    assert "commandCatalogCount !== 125" in (
         ROOT / "scripts/verify-controller.cjs"
     ).read_text(encoding="utf-8")
 

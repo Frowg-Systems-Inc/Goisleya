@@ -161,6 +161,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiteModeSuggestVerifier", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DiagnosticsBundleVerifier", "Verification\DiagnosticsBundleVerifier\DiagnosticsBundleVerifier.csproj", "{724E6D83-15CD-4EA0-D8D1-03F526E4A10D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StackedGuidanceVerifier", "Verification\StackedGuidanceVerifier\StackedGuidanceVerifier.csproj", "{7A3F1C52-9E4D-4B8A-A2F6-3C5D8E1B9F07}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -482,6 +484,10 @@ Global
 		{724E6D83-15CD-4EA0-D8D1-03F526E4A10D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{724E6D83-15CD-4EA0-D8D1-03F526E4A10D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{724E6D83-15CD-4EA0-D8D1-03F526E4A10D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7A3F1C52-9E4D-4B8A-A2F6-3C5D8E1B9F07}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7A3F1C52-9E4D-4B8A-A2F6-3C5D8E1B9F07}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7A3F1C52-9E4D-4B8A-A2F6-3C5D8E1B9F07}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7A3F1C52-9E4D-4B8A-A2F6-3C5D8E1B9F07}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{9D87C798-94D4-4ED8-AA34-FEE703E43E59} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
@@ -556,5 +562,6 @@ Global
 		{502C4B61-F3AB-4C8E-B6BF-E1D304C28F0B} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 		{613D5C72-04BC-4D9F-C7C0-F2E415D3900C} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 		{724E6D83-15CD-4EA0-D8D1-03F526E4A10D} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
+		{7A3F1C52-9E4D-4B8A-A2F6-3C5D8E1B9F07} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 	EndGlobalSection
 EndGlobal

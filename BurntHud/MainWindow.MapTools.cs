@@ -650,12 +650,14 @@ public partial class MainWindow
                     ? "Open The Isle Tab menu, click Asset Location while the game is focused, then your icon appears here"
                     : "Launch The Isle first so Player Sync can accept an Asset Location copy";
             HeadingText.Text = "HEADING --";
+            HeadingText.ToolTip = null;
             CompassLeftText.Text = "--";
             CompassRightText.Text = "--";
             CompassRibbon.Opacity = 0.55;
             UpdateCompassCourseMarker();
             MovementText.Text = "SPEED --";
             CopyPositionButton.IsEnabled = false;
+            CopyPositionButton.ToolTip = "Copy your authorized live coordinates and heading";
             return;
         }
 
@@ -666,11 +668,37 @@ public partial class MainWindow
         PositionText.ToolTip = string.IsNullOrWhiteSpace(_currentGridReference)
             ? "Authorized live position"
             : $"Tactical grid {_currentGridReference} · authorized live position";
-        CompassRibbon.Opacity = 1;
-        CompassLeftText.Text = ToCardinal(_currentSelfBearing - 45);
-        HeadingText.Text = $"{ToCardinal(_currentSelfBearing)} {_currentSelfBearing:000}°";
-        CompassRightText.Text = ToCardinal(_currentSelfBearing + 45);
+        // Wave-8: the compass and the copy surface share the same decaying
+        // heading confidence as the tactical briefs — the held value is always
+        // the last good authorized heading and never jumps; only the honest
+        // degraded/stale treatment changes with feed age.
+        var headingConfidence = CurrentHeadingConfidenceView();
+        CompassRibbon.Opacity = headingConfidence.Tier switch
+        {
+            HeadingConfidenceTier.Stale => 0.65,
+            HeadingConfidenceTier.Degraded => 0.85,
+            _ => 1
+        };
+        CompassLeftText.Text = ToCardinal(headingConfidence.HeldDegrees - 45);
+        HeadingText.Text = $"{ToCardinal(headingConfidence.HeldDegrees)} {headingConfidence.HeldDegrees:000}°{headingConfidence.CompactSuffix}";
+        HeadingText.ToolTip = headingConfidence.Tier switch
+        {
+            HeadingConfidenceTier.Stale =>
+                $"Heading HELD at the last good value · no fresh authorized position for {HeadingConfidenceLogic.FormatAge(_currentMarkerFreshnessAgeMs)}",
+            HeadingConfidenceTier.Degraded =>
+                "Heading confidence degraded · the authorized position feed is slowing",
+            _ => null
+        };
+        CompassRightText.Text = ToCardinal(headingConfidence.HeldDegrees + 45);
         UpdateCompassCourseMarker();
+        CopyPositionButton.ToolTip = headingConfidence.Tier switch
+        {
+            HeadingConfidenceTier.Stale =>
+                "Copy your authorized coordinates · heading is HELD at the last good value while the feed is stale",
+            HeadingConfidenceTier.Degraded =>
+                "Copy your authorized coordinates · heading confidence is degraded (feed slowing)",
+            _ => "Copy your authorized live coordinates and heading"
+        };
         MovementText.Text = _currentSelfSpeed >= 0.15
             ? $"{_currentSelfSpeed:0.0} MU/MIN  /  TRIP {_currentSessionDistance:0.0}"
             : $"STILL  /  TRIP {_currentSessionDistance:0.0} MU";

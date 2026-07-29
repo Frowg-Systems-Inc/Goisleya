@@ -23,7 +23,7 @@ namespace Isley;
 
 public partial class MainWindow
 {
-    private NextMoveRecommendation CurrentNextMoveRecommendation()
+    private NextMoveSnapshot CurrentNextMoveSnapshot()
     {
         var incident = SurvivalAssistantLogic.Find(_survivalIncidentId);
         var now = DateTimeOffset.UtcNow;
@@ -43,7 +43,7 @@ public partial class MainWindow
             .DefaultIfEmpty(-1)
             .Min();
         var nest = CurrentNestPlannerSnapshot();
-        return NextMoveLogic.Evaluate(new NextMoveSnapshot(
+        return new NextMoveSnapshot(
             _streamerMode,
             incident?.Label ?? string.Empty,
             !string.IsNullOrEmpty(_recoveryMonitorPriorityOverride)
@@ -118,7 +118,7 @@ public partial class MainWindow
             ManualSightingApplies(manualSighting),
             manualSighting.Urgency,
             manualSighting.Heading,
-            manualSighting.Detail));
+            manualSighting.Detail);
     }
 
     private void UpdateNextMove(bool force = false)
@@ -131,7 +131,8 @@ public partial class MainWindow
             return;
         }
 
-        var recommendation = CurrentNextMoveRecommendation();
+        var stack = NextMoveLogic.EvaluateStacked(CurrentNextMoveSnapshot());
+        var recommendation = stack.Top;
         var signature = string.Join('|',
             recommendation.Category,
             recommendation.Heading,
@@ -139,7 +140,8 @@ public partial class MainWindow
             recommendation.ActionId,
             recommendation.ActionLabel,
             recommendation.Priority,
-            recommendation.Tone);
+            recommendation.Tone,
+            stack.TotalActive);
         if (!force && string.Equals(signature, _nextMoveUiSignature, StringComparison.Ordinal))
         {
             return;
@@ -153,7 +155,14 @@ public partial class MainWindow
             NextMoveTone.Active => (Brush)FindResource("AccentBrush"),
             _ => (Brush)FindResource("PrimaryTextBrush")
         };
-        NextMoveCategoryText.Text = recommendation.Category;
+        // Wave-8: stacked guidance — the slot shows the top of the deterministic
+        // priority ranking; simultaneous runners-up surface as an honest "+N".
+        NextMoveCategoryText.Text = stack.HasOverflow
+            ? $"{recommendation.Category} {stack.OverflowSuffix}"
+            : recommendation.Category;
+        NextMoveCategoryText.ToolTip = stack.HasOverflow
+            ? stack.OverflowTooltip
+            : null;
         NextMoveCategoryText.Foreground = accent;
         NextMoveHeadingText.Text = recommendation.Heading;
         NextMoveHeadingText.Foreground = accent;
