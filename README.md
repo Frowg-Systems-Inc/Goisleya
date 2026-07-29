@@ -14,6 +14,29 @@ independent Isley Server Bridge and publish only operator-authorized data to an
 Isley Relay. Players sign in through Steam and receive a filtered live stream;
 Isley never needs another community's map, player panel, private API, or account.
 
+## What's new in 1.4.0
+
+Thirteen quality-of-life additions across planners, voice, survival, and
+chrome: nest timer alerts, a schema-versioned planner-state store, server
+growth-rate presets, per-peer voice volume memory with a real per-peer
+connection-quality surface, named friend squads, a map watchlist, bounded
+tactical-log export, timer journaling that reconciles what expired while you
+were away, sensor confidence dots with heading confidence decay (held values
+never jump), hotkey conflict detection, Lite Mode suggestions that never
+auto-enable, named layout profiles, and a redacted diagnostics bundle.
+
+The relay viewer stream speaks v2 on opt-in: delta frames with periodic
+keyframes and a validation-first apply, while v1 stays the byte-identical
+default. The updater gained a post-update boot-ok marker (an update stays
+pending until a healthy boot confirms it), a real beta channel, and delta
+downloads that keep the same hash, size, and zip-safety posture as full
+packages. Root of trust is unchanged.
+
+The verification culture kept pace with the features: every one of the 84
+logic files compiles under a focused verifier (84/84), 71 verifiers run in
+the solution, and the mutation harness proves 13/13 deliberate contract
+sabotages are caught with zero false passes.
+
 ## Live Map
 
 The Live Map application shell runs from `BurntHud/Map/index.html`, which is
