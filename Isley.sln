@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -39,6 +39,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FightCheckVerifier", "Verif
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FocusModeVerifier", "Verification\FocusModeVerifier\FocusModeVerifier.csproj", "{60604131-2F12-4ED0-987D-D53BC4DEDBB5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FocusModeSuggestVerifier", "Verification\FocusModeSuggestVerifier\FocusModeSuggestVerifier.csproj", "{6E8FC022-0B37-4242-95A8-BC480738B75E}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GatewayResourceVerifier", "Verification\GatewayResourceVerifier\GatewayResourceVerifier.csproj", "{EA18A5C4-F2F6-4389-8958-1D0EC461FE64}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GrowthGateWatchVerifier", "Verification\GrowthGateWatchVerifier\GrowthGateWatchVerifier.csproj", "{0B976A6D-5FA1-4C1A-9804-5C15B4AD17C2}"
@@ -63,6 +65,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiteModeVerifier", "Verific
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiveGrowthBridgeVerifier", "Verification\LiveGrowthBridgeVerifier\LiveGrowthBridgeVerifier.csproj", "{60513938-DB6F-4F96-8808-66635C226ABF}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiveHealthVerifier", "Verification\LiveHealthVerifier\LiveHealthVerifier.csproj", "{835165BE-67C2-45F2-AC38-0835A054395F}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LiveSpeciesBridgeVerifier", "Verification\LiveSpeciesBridgeVerifier\LiveSpeciesBridgeVerifier.csproj", "{0C7B72B8-9286-435F-AB58-518951B66731}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ManualSightingVerifier", "Verification\ManualSightingVerifier\ManualSightingVerifier.csproj", "{E899D452-12C2-4669-B73E-34CB7411E4A9}"
@@ -82,6 +86,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PatchWatchVerifier", "Verification\PatchWatchVerifier\PatchWatchVerifier.csproj", "{9369BB13-3E29-4A63-ACEE-219D9516050B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayerSnapshotVerifier", "Verification\PlayerSnapshotVerifier\PlayerSnapshotVerifier.csproj", "{62880AAE-B9D5-4A91-AF26-D79FA4D74832}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PortableConfigVerifier", "Verification\PortableConfigVerifier\PortableConfigVerifier.csproj", "{80A149BD-2C3C-4699-8C92-CF0BB80755D6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PressureCoachVerifier", "Verification\PressureCoachVerifier\PressureCoachVerifier.csproj", "{3D23E1F1-22B2-4BF6-8564-3C81605EEE57}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuickKeysVerifier", "Verification\QuickKeysVerifier\QuickKeysVerifier.csproj", "{9D7B4C5A-C9E8-4AFD-BD75-68ED07793356}"
 EndProject
@@ -118,6 +126,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VoiceIntegrationVerifier", "Verification\VoiceIntegrationVerifier\VoiceIntegrationVerifier.csproj", "{6D89D8BB-55B3-476A-A214-F7B3CE94B5DC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WaterCrossingVerifier", "Verification\WaterCrossingVerifier\WaterCrossingVerifier.csproj", "{762A65C1-1616-4C0E-9D2F-47BCBA4403A4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WhatsNewVerifier", "Verification\WhatsNewVerifier\WhatsNewVerifier.csproj", "{16BDB7C1-EE8D-4F50-8973-9628B46E8DE7}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZoneBriefVerifier", "Verification\ZoneBriefVerifier\ZoneBriefVerifier.csproj", "{800FC4FA-9103-44F2-9870-439FC59859B2}"
 EndProject
@@ -200,6 +210,26 @@ Global
 		{60604131-2F12-4ED0-987D-D53BC4DEDBB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{60604131-2F12-4ED0-987D-D53BC4DEDBB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{60604131-2F12-4ED0-987D-D53BC4DEDBB5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6E8FC022-0B37-4242-95A8-BC480738B75E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6E8FC022-0B37-4242-95A8-BC480738B75E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6E8FC022-0B37-4242-95A8-BC480738B75E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6E8FC022-0B37-4242-95A8-BC480738B75E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{835165BE-67C2-45F2-AC38-0835A054395F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{835165BE-67C2-45F2-AC38-0835A054395F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{835165BE-67C2-45F2-AC38-0835A054395F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{835165BE-67C2-45F2-AC38-0835A054395F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{80A149BD-2C3C-4699-8C92-CF0BB80755D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{80A149BD-2C3C-4699-8C92-CF0BB80755D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{80A149BD-2C3C-4699-8C92-CF0BB80755D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{80A149BD-2C3C-4699-8C92-CF0BB80755D6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3D23E1F1-22B2-4BF6-8564-3C81605EEE57}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3D23E1F1-22B2-4BF6-8564-3C81605EEE57}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3D23E1F1-22B2-4BF6-8564-3C81605EEE57}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3D23E1F1-22B2-4BF6-8564-3C81605EEE57}.Release|Any CPU.Build.0 = Release|Any CPU
+		{16BDB7C1-EE8D-4F50-8973-9628B46E8DE7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{16BDB7C1-EE8D-4F50-8973-9628B46E8DE7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{16BDB7C1-EE8D-4F50-8973-9628B46E8DE7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{16BDB7C1-EE8D-4F50-8973-9628B46E8DE7}.Release|Any CPU.Build.0 = Release|Any CPU
 		{EA18A5C4-F2F6-4389-8958-1D0EC461FE64}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{EA18A5C4-F2F6-4389-8958-1D0EC461FE64}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EA18A5C4-F2F6-4389-8958-1D0EC461FE64}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -381,6 +411,11 @@ Global
 		{527D324D-67B3-43BB-8E94-697F5305EA07} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 		{5796A4FC-CA5B-4B7B-8BBD-8CE0FFF6F3FF} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 		{60604131-2F12-4ED0-987D-D53BC4DEDBB5} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
+		{6E8FC022-0B37-4242-95A8-BC480738B75E} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
+		{835165BE-67C2-45F2-AC38-0835A054395F} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
+		{80A149BD-2C3C-4699-8C92-CF0BB80755D6} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
+		{3D23E1F1-22B2-4BF6-8564-3C81605EEE57} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
+		{16BDB7C1-EE8D-4F50-8973-9628B46E8DE7} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 		{EA18A5C4-F2F6-4389-8958-1D0EC461FE64} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 		{0B976A6D-5FA1-4C1A-9804-5C15B4AD17C2} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 		{B2ED0B7F-C491-4CCD-AB7C-22C138773624} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
