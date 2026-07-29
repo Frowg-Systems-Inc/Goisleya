@@ -1704,6 +1704,11 @@ public partial class MainWindow : Window
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
         public List<VoicePeerVolumeEntry> VoicePeerVolumes { get; set; } = [];
         public List<SteamFriendGroupEntry> SteamFriendGroups { get; set; } = [];
+        // Wave-5 relay viewer-stream v2 opt-in (delta encoding). Default ON;
+        // setting false is the kill switch that keeps the client on the
+        // version-1 full-snapshot stream. Loaded/saved by the append-only
+        // helpers at the end of MainWindow.Settings.cs.
+        public bool RelayStreamV2Enabled { get; set; } = true;
     }
 
     private sealed class HudLayoutProfileSettings

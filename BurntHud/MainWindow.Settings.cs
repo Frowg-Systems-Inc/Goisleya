@@ -1089,4 +1089,147 @@ public partial class MainWindow
             }
         }
     }
+
+    // ===== Wave-5 relay viewer-stream v2 opt-in (persisted kill switch) =====
+    // Default ON. Stored as the additive RelayStreamV2Enabled property of the
+    // bounded isley-extras.json sidecar so the main MapperSettings schema stays
+    // untouched. Load is fully tolerant (missing, oversized, or corrupt
+    // sidecars fall back to ON); save edits the sidecar's JSON node tree so
+    // every unrelated sidecar property is preserved, and mirrors the atomic
+    // temp-file + verify pattern used by SaveSettings/SaveOverlayExtras.
+
+    private bool _relayStreamV2Enabled = true;
+    private bool _relayStreamV2Loaded;
+
+    private bool RelayStreamV2Enabled
+    {
+        get
+        {
+            EnsureRelayStreamV2Loaded();
+            return _relayStreamV2Enabled;
+        }
+    }
+
+    private void EnsureRelayStreamV2Loaded()
+    {
+        if (_relayStreamV2Loaded)
+        {
+            return;
+        }
+        _relayStreamV2Loaded = true;
+
+        var candidates = OverlayExtrasCandidatePaths()
+            .Where(File.Exists)
+            .OrderByDescending(File.GetLastWriteTimeUtc);
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                if (new FileInfo(candidate).Length > OverlayExtrasMaximumBytes)
+                {
+                    continue;
+                }
+
+                var extras = JsonSerializer.Deserialize<OverlayExtrasSettings>(
+                    File.ReadAllText(candidate));
+                if (extras is null)
+                {
+                    continue;
+                }
+                _relayStreamV2Enabled = extras.RelayStreamV2Enabled;
+                return;
+            }
+            catch (Exception exception) when (
+                exception is JsonException or IOException or UnauthorizedAccessException)
+            {
+                // A corrupt or unreadable sidecar must never block the overlay;
+                // fall through to the next candidate, then to the default ON.
+            }
+        }
+    }
+
+    private void SetRelayStreamV2Enabled(bool enabled)
+    {
+        if (_relayStreamV2Loaded && _relayStreamV2Enabled == enabled)
+        {
+            return;
+        }
+        _relayStreamV2Enabled = enabled;
+        _relayStreamV2Loaded = true;
+        SaveRelayStreamV2Preference();
+    }
+
+    private void SaveRelayStreamV2Preference()
+    {
+        foreach (var candidate in OverlayExtrasCandidatePaths())
+        {
+            string? temporaryPath = null;
+            try
+            {
+                var directory = Path.GetDirectoryName(candidate);
+                if (string.IsNullOrWhiteSpace(directory))
+                {
+                    continue;
+                }
+
+                System.Text.Json.Nodes.JsonObject document;
+                if (File.Exists(candidate)
+                    && new FileInfo(candidate).Length <= OverlayExtrasMaximumBytes)
+                {
+                    try
+                    {
+                        document = System.Text.Json.Nodes.JsonNode
+                                       .Parse(File.ReadAllText(candidate)) as
+                                   System.Text.Json.Nodes.JsonObject
+                                   ?? new System.Text.Json.Nodes.JsonObject();
+                    }
+                    catch (JsonException)
+                    {
+                        // A corrupt sidecar has nothing worth preserving;
+                        // heal it with a fresh document below.
+                        document = new System.Text.Json.Nodes.JsonObject();
+                    }
+                }
+                else
+                {
+                    document = new System.Text.Json.Nodes.JsonObject();
+                }
+
+                document["RelayStreamV2Enabled"] = _relayStreamV2Enabled;
+                if (document["SchemaVersion"] is null)
+                {
+                    document["SchemaVersion"] = OverlayExtrasSettings.CurrentSchemaVersion;
+                }
+                var serialized = document.ToJsonString(new JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+
+                Directory.CreateDirectory(directory);
+                temporaryPath = Path.Combine(
+                    directory,
+                    $".{Path.GetFileName(candidate)}.{Guid.NewGuid():N}.tmp");
+                File.WriteAllText(temporaryPath, serialized);
+                File.Move(temporaryPath, candidate, overwrite: true);
+                temporaryPath = null;
+                if (!File.Exists(candidate)
+                    || !string.Equals(
+                        File.ReadAllText(candidate),
+                        serialized,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                return;
+            }
+            catch (Exception exception) when (
+                exception is JsonException or IOException or UnauthorizedAccessException)
+            {
+                if (!string.IsNullOrWhiteSpace(temporaryPath))
+                {
+                    try { File.Delete(temporaryPath); } catch { }
+                }
+            }
+        }
+    }
 }

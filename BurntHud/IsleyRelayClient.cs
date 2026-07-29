@@ -125,12 +125,34 @@ internal sealed record IsleyRelayConnectionState(
 
 internal sealed class IsleyRelayClient : IAsyncDisposable
 {
+    private static readonly byte[] ViewerHelloPayload = Encoding.UTF8.GetBytes(
+        $"{{\"type\":\"hello\",\"maxStreamVersion\":{TelemetryProtocol.ViewerStreamVersion}}}");
+
     private readonly HttpClient _httpClient = CreateHttpClient();
+    private readonly object _streamInfoGate = new();
     private CancellationTokenSource? _streamCancellation;
     private Task? _streamTask;
+    private int _activeStreamVersion;
+    private bool _deltaEncodingActive;
 
     internal event EventHandler<ViewerTelemetrySnapshot>? SnapshotReceived;
     internal event EventHandler<IsleyRelayConnectionState>? StateChanged;
+
+    /// <summary>
+    /// Viewer stream version the relay negotiated on the active connection:
+    /// 0 while no hello answer arrived (legacy version-1 relays), otherwise
+    /// the relay's answer clamped to what this build understands.
+    /// </summary>
+    internal int ActiveStreamVersion
+    {
+        get { lock (_streamInfoGate) { return _activeStreamVersion; } }
+    }
+
+    /// <summary>True only while a v2 stream with delta encoding is active.</summary>
+    internal bool DeltaEncodingActive
+    {
+        get { lock (_streamInfoGate) { return _deltaEncodingActive; } }
+    }
 
     private static HttpClient CreateHttpClient()
     {
@@ -293,11 +315,12 @@ internal sealed class IsleyRelayClient : IAsyncDisposable
     internal async Task ConnectAsync(
         IsleyRelayJoin join,
         string accessToken,
+        bool streamV2OptIn = true,
         CancellationToken cancellationToken = default)
     {
         await StopAsync();
         _streamCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _streamTask = RunStreamAsync(join, accessToken, _streamCancellation.Token);
+        _streamTask = RunStreamAsync(join, accessToken, streamV2OptIn, _streamCancellation.Token);
     }
 
     internal async Task StopAsync()
@@ -306,6 +329,7 @@ internal sealed class IsleyRelayClient : IAsyncDisposable
         var task = _streamTask;
         _streamCancellation = null;
         _streamTask = null;
+        ResetStreamInfo();
         if (cancellation is null)
         {
             return;
@@ -331,6 +355,7 @@ internal sealed class IsleyRelayClient : IAsyncDisposable
     private async Task RunStreamAsync(
         IsleyRelayJoin join,
         string accessToken,
+        bool streamV2OptIn,
         CancellationToken cancellationToken)
     {
         var reconnectDelay = TimeSpan.FromMilliseconds(250);
@@ -341,8 +366,20 @@ internal sealed class IsleyRelayClient : IAsyncDisposable
             socket.Options.SetRequestHeader("Authorization", $"Bearer {accessToken}");
             try
             {
+                ResetStreamInfo();
                 Report("connecting", $"Connecting to {join.DisplayText}…");
                 await socket.ConnectAsync(CreateWebSocketUri(join), cancellationToken);
+                if (streamV2OptIn)
+                {
+                    // Viewer stream negotiation: one small control frame right
+                    // after connect. Relays that predate stream v2 ignore it
+                    // and keep sending version-1 full snapshots.
+                    await socket.SendAsync(
+                        ViewerHelloPayload,
+                        WebSocketMessageType.Text,
+                        true,
+                        cancellationToken);
+                }
                 Report("live", $"Connected to {join.DisplayText}.");
                 reconnectDelay = TimeSpan.FromMilliseconds(250);
                 await ReceiveLoopAsync(socket, cancellationToken);
@@ -375,6 +412,7 @@ internal sealed class IsleyRelayClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var buffer = new byte[16 * 1024];
+        var stream = new IsleyRelayStreamSession();
         while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
         {
             using var payload = new MemoryStream();
@@ -394,33 +432,128 @@ internal sealed class IsleyRelayClient : IAsyncDisposable
                 await payload.WriteAsync(buffer.AsMemory(0, result.Count), cancellationToken);
             } while (!result.EndOfMessage);
 
-            using var document = JsonDocument.Parse(payload.ToArray());
-            var root = document.RootElement;
-            var type = root.TryGetProperty("type", out var typeValue)
-                ? typeValue.GetString()
-                : null;
-            if (type == "status")
+            JsonDocument document;
+            try
             {
-                var state = root.TryGetProperty("state", out var stateValue)
-                    ? stateValue.GetString() ?? "waiting"
-                    : "waiting";
-                var detail = root.TryGetProperty("detail", out var detailValue)
-                    ? detailValue.GetString() ?? "Waiting for live telemetry."
-                    : "Waiting for live telemetry.";
-                Report(state, detail);
-                continue;
+                document = JsonDocument.Parse(payload.ToArray());
             }
-            if (type != "snapshot" || !root.TryGetProperty("snapshot", out var snapshotValue))
+            catch (JsonException)
             {
-                continue;
+                // Malformed JSON can never be applied safely; reconnect so the
+                // relay restarts the stream with a keyframe.
+                throw new InvalidDataException("The relay sent malformed telemetry JSON.");
             }
-            var snapshot = snapshotValue.Deserialize<ViewerTelemetrySnapshot>(
-                new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            if (snapshot is null || snapshot.ProtocolVersion != TelemetryProtocol.Version)
+            using (document)
             {
-                throw new InvalidDataException("The relay telemetry version is not supported.");
+                var root = document.RootElement;
+                var type = root.TryGetProperty("type", out var typeValue)
+                    ? typeValue.GetString()
+                    : null;
+                if (stream.UpdateRequired)
+                {
+                    // A stream newer than this build is never parsed; the
+                    // connection stays open as an honest waiting state.
+                    continue;
+                }
+                if (type == "status")
+                {
+                    var state = root.TryGetProperty("state", out var stateValue)
+                        ? stateValue.GetString() ?? "waiting"
+                        : "waiting";
+                    var detail = root.TryGetProperty("detail", out var detailValue)
+                        ? detailValue.GetString() ?? "Waiting for live telemetry."
+                        : "Waiting for live telemetry.";
+                    Report(state, detail);
+                    continue;
+                }
+                if (type == "hello")
+                {
+                    var verdict = stream.TryNegotiate(root, out var helloDetail);
+                    if (verdict == IsleyRelayFrameVerdict.UpdateRequired)
+                    {
+                        PublishStreamInfo(stream);
+                        Report("update-required", helloDetail);
+                    }
+                    else if (verdict == IsleyRelayFrameVerdict.ResyncRequired)
+                    {
+                        throw new InvalidDataException(
+                            $"The relay stream negotiation failed ({helloDetail}); resynchronizing.");
+                    }
+                    else
+                    {
+                        PublishStreamInfo(stream);
+                    }
+                    continue;
+                }
+                if (type == "snapshot" && root.TryGetProperty("snapshot", out var snapshotValue))
+                {
+                    if (TryEnterUpdateRequired(stream, root))
+                    {
+                        continue;
+                    }
+                    var verdict = stream.TryApplySnapshot(snapshotValue, out var snapshot, out var detail);
+                    if (verdict != IsleyRelayFrameVerdict.Applied || snapshot is null)
+                    {
+                        throw new InvalidDataException(
+                            $"The relay snapshot could not be applied ({detail}).");
+                    }
+                    SnapshotReceived?.Invoke(this, snapshot);
+                    continue;
+                }
+                if (type == "delta" && root.TryGetProperty("delta", out var deltaValue))
+                {
+                    if (TryEnterUpdateRequired(stream, root))
+                    {
+                        continue;
+                    }
+                    var verdict = stream.TryApplyDelta(deltaValue, out var materialized, out var detail);
+                    if (verdict == IsleyRelayFrameVerdict.UpdateRequired)
+                    {
+                        PublishStreamInfo(stream);
+                        Report("update-required", detail);
+                        continue;
+                    }
+                    if (verdict != IsleyRelayFrameVerdict.Applied || materialized is null)
+                    {
+                        throw new InvalidDataException(
+                            $"The relay delta stream lost sync ({detail}); resynchronizing.");
+                    }
+                    SnapshotReceived?.Invoke(this, materialized);
+                    continue;
+                }
             }
-            SnapshotReceived?.Invoke(this, snapshot);
+        }
+    }
+
+    private bool TryEnterUpdateRequired(IsleyRelayStreamSession stream, JsonElement envelope)
+    {
+        if (!IsleyRelayStreamLogic.IsUnsupportedStreamVersion(envelope, out var streamVersion))
+        {
+            return false;
+        }
+        stream.MarkUpdateRequired();
+        PublishStreamInfo(stream);
+        Report(
+            "update-required",
+            $"Relay viewer stream v{streamVersion} is newer than this Isley build (v{TelemetryProtocol.ViewerStreamVersion}) · update Isley to watch this server");
+        return true;
+    }
+
+    private void PublishStreamInfo(IsleyRelayStreamSession stream)
+    {
+        lock (_streamInfoGate)
+        {
+            _activeStreamVersion = stream.NegotiatedStreamVersion;
+            _deltaEncodingActive = stream.DeltaEncodingActive;
+        }
+    }
+
+    private void ResetStreamInfo()
+    {
+        lock (_streamInfoGate)
+        {
+            _activeStreamVersion = 0;
+            _deltaEncodingActive = false;
         }
     }
 
