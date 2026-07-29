@@ -44,3 +44,31 @@ on every PR; both must be green.
 Open an issue with the bug template: expected vs actual behavior, Isley
 version (`whats-new.json`), Windows build, and relevant lines from
 `IsleyData/Logs` if available.
+
+## Code style and formatting gates
+
+The repo has a root `.editorconfig` matching the code's dominant style
+(4-space indent, LF for C#, file-scoped namespaces, Allman braces). Most
+files already comply; a known set of legacy deviations is tracked as
+baseline debt in `docs/ANALYZER-BASELINE.md`.
+
+Roslyn analyzers (`AnalysisLevel 8.0-recommended`) run on every build as
+plain warnings — they never fail the build. Fix warnings in code you touch;
+leave unrelated warnings for the backlog.
+
+CI runs a diff-scoped, informational `format-check` job: it runs
+`dotnet format --verify-no-changes` only on the C# files changed in your PR
+and posts a summary. To check the same thing locally before pushing:
+
+```powershell
+.\scripts\format-changed.ps1
+```
+
+To auto-fix formatting only in files you changed:
+
+```powershell
+dotnet format Isley.sln --include <paths-to-your-changed-files>
+```
+
+Please do not run a whole-solution `dotnet format`: the resulting reformat
+diff makes review and parallel work harder.
