@@ -24,6 +24,12 @@ namespace Isley;
 public partial class MainWindow
 {
     private const string PinShareCodePrefix = "ISLEYPINS1.";
+    private const string RouteShareCodePrefix = "ISLEYROUTE1.";
+    private const string NoGoShareCodePrefix = "ISLEYNOGO1.";
+
+    // Session-scoped map-tool toggles owned by this partial (the shared
+    // settings schema lives outside map tools and stays untouched).
+    private bool _routeAutoReplanEnabled = true;
 
     private async Task CopyPinShareCodeAsync()
     {
@@ -77,6 +83,141 @@ public partial class MainWindow
                 _ => "SHARE CODE NOT VALID"
             },
             added > 0);
+    }
+
+    private async Task CopyRouteShareCodeAsync()
+    {
+        var code = await ExecuteMapperJsonAsync<string>("window.__isley?.exportRouteShareCode?.()");
+        if (string.IsNullOrWhiteSpace(code) || !code.StartsWith(RouteShareCodePrefix, StringComparison.Ordinal))
+        {
+            await ShowHotkeyToastAsync("NO ACTIVE ROUTE TO SHARE YET", false);
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(code);
+        }
+        catch (Exception exception) when (
+            exception is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
+        {
+            await ShowHotkeyToastAsync("CLIPBOARD BUSY · TRY AGAIN", false);
+            return;
+        }
+
+        await ShowHotkeyToastAsync("ROUTE SHARE CODE COPIED · SEND IT TO YOUR PACK", true);
+    }
+
+    private async Task ImportRouteShareCodeFromClipboardAsync()
+    {
+        string clipboard;
+        try
+        {
+            clipboard = Clipboard.ContainsText() ? Clipboard.GetText().Trim() : string.Empty;
+        }
+        catch (Exception exception) when (
+            exception is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
+        {
+            clipboard = string.Empty;
+        }
+
+        if (!clipboard.StartsWith(RouteShareCodePrefix, StringComparison.Ordinal) || clipboard.Length > 8192)
+        {
+            await ShowHotkeyToastAsync("COPY A ROUTE SHARE CODE FIRST", false);
+            return;
+        }
+
+        var stops = await ExecuteMapperJsonAsync<int?>(
+            $"window.__isley?.importRouteShareCode?.({JsonSerializer.Serialize(clipboard)})");
+        await ShowHotkeyToastAsync(
+            stops switch
+            {
+                > 0 => $"SHARED ROUTE STARTED · {stops} STOPS",
+                0 => "NO NEW ROUTE · ALREADY ON YOUR MAP",
+                _ => "SHARE CODE NOT VALID"
+            },
+            stops > 0);
+    }
+
+    private async Task CopyNoGoShareCodeAsync()
+    {
+        var code = await ExecuteMapperJsonAsync<string>("window.__isley?.exportNoGoShareCode?.()");
+        if (string.IsNullOrWhiteSpace(code) || !code.StartsWith(NoGoShareCodePrefix, StringComparison.Ordinal))
+        {
+            await ShowHotkeyToastAsync("NO NO-GO AREAS TO SHARE YET", false);
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(code);
+        }
+        catch (Exception exception) when (
+            exception is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
+        {
+            await ShowHotkeyToastAsync("CLIPBOARD BUSY · TRY AGAIN", false);
+            return;
+        }
+
+        await ShowHotkeyToastAsync("NO-GO SHARE CODE COPIED · SEND IT TO YOUR PACK", true);
+    }
+
+    private async Task ImportNoGoShareCodeFromClipboardAsync()
+    {
+        string clipboard;
+        try
+        {
+            clipboard = Clipboard.ContainsText() ? Clipboard.GetText().Trim() : string.Empty;
+        }
+        catch (Exception exception) when (
+            exception is System.Runtime.InteropServices.ExternalException or InvalidOperationException)
+        {
+            clipboard = string.Empty;
+        }
+
+        if (!clipboard.StartsWith(NoGoShareCodePrefix, StringComparison.Ordinal) || clipboard.Length > 8192)
+        {
+            await ShowHotkeyToastAsync("COPY A NO-GO SHARE CODE FIRST", false);
+            return;
+        }
+
+        var added = await ExecuteMapperJsonAsync<int?>(
+            $"window.__isley?.importNoGoShareCode?.({JsonSerializer.Serialize(clipboard)})");
+        await ShowHotkeyToastAsync(
+            added switch
+            {
+                > 0 => $"{added} SHARED NO-GO AREA{(added == 1 ? string.Empty : "S")} ADDED TO YOUR MAP",
+                0 => "NO NEW AREAS · ALREADY ON YOUR MAP",
+                _ => "SHARE CODE NOT VALID"
+            },
+            added > 0);
+    }
+
+    private async Task UndoMapClearAsync()
+    {
+        var undone = await ExecuteMapperJsonAsync<string>("window.__isley?.undoLastClear?.()");
+        await ShowHotkeyToastAsync(
+            undone switch
+            {
+                "pins" => "PIN CLEAR UNDONE · MARKERS RESTORED",
+                "route" => "ROUTE CLEAR UNDONE · PLAN RESTORED",
+                "noGo" => "NO-GO REMOVAL UNDONE · AREA RESTORED",
+                "measurement" => "MEASUREMENT CLEAR UNDONE",
+                _ => "NOTHING TO UNDO"
+            },
+            !string.IsNullOrEmpty(undone));
+    }
+
+    private async Task ToggleRouteAutoReplanAsync()
+    {
+        _routeAutoReplanEnabled = !_routeAutoReplanEnabled;
+        await ExecuteMapperCommandAsync(
+            $"window.__isley?.configure({{ routeAutoReplan: {(_routeAutoReplanEnabled ? "true" : "false")} }}) ?? false");
+        await ShowHotkeyToastAsync(
+            _routeAutoReplanEnabled
+                ? "ROUTE AUTO-REPLAN ON · STRAYS RE-PLOT FROM YOU"
+                : "ROUTE AUTO-REPLAN OFF",
+            true);
     }
 
     private async Task LoadTerrainRoadNetworkAsync()
@@ -3219,6 +3360,8 @@ public partial class MainWindow
             "blocked-passage-saved" => "BLOCKED PASSAGE SAVED · active course is replanning",
             "measured-slope-saved" => "MEASURED SLOPE SAVED · route avoidance active",
             "area-removed" => "Area removed · active terrain course recalculated",
+            "area-restored" => "AREA RESTORED · active terrain course recalculated",
+            "areas-imported" => "SHARED AREAS IMPORTED · routes go around them",
             "trace-cancelled" => "Unfinished boundary discarded",
             "maximum-8-areas" => "8 AREA LIMIT · remove one before tracing another",
             "save-failed" => "Area is visible now but local saving failed",
@@ -3234,6 +3377,7 @@ public partial class MainWindow
             "trace-a-larger-area" or "invalid-boundary" or "save-failed" or "maximum-8-areas"
             ? (Brush)FindResource("WarningBrush")
             : _noGoLastStatus is "area-saved" or "blocked-passage-saved" or "measured-slope-saved"
+                or "area-restored" or "areas-imported"
                 ? (Brush)FindResource("SuccessBrush")
                 : (Brush)FindResource("SecondaryTextBrush");
 

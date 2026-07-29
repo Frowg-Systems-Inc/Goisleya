@@ -813,6 +813,24 @@ public partial class MainWindow
             case "map-pins-import":
                 await ImportPinShareCodeFromClipboardAsync();
                 break;
+            case "map-undo-clear":
+                await UndoMapClearAsync();
+                break;
+            case "map-routes-share":
+                await CopyRouteShareCodeAsync();
+                break;
+            case "map-routes-import":
+                await ImportRouteShareCodeFromClipboardAsync();
+                break;
+            case "map-nogo-share":
+                await CopyNoGoShareCodeAsync();
+                break;
+            case "map-nogo-import":
+                await ImportNoGoShareCodeFromClipboardAsync();
+                break;
+            case "map-route-replan":
+                await ToggleRouteAutoReplanAsync();
+                break;
             case "encounter-history":
                 await CopyEncounterHistoryAsync();
                 break;

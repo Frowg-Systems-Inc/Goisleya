@@ -1675,7 +1675,7 @@ const commandCatalogMatch = source.match(/CommandPaletteActions\s*=\s*\[([\s\S]*
 const commandCatalogCount = commandCatalogMatch
   ? (commandCatalogMatch[1].match(/new\("/g) || []).length
   : -1;
-if (commandCatalogCount !== 111) {
+if (commandCatalogCount !== 117) {
   throw new Error(`Quick Commands catalog count drifted: ${commandCatalogCount}`);
 }
 const quickKeysSurface = `${source}\n${xamlSource}\n${quickKeysLogicSource}\n${overlayLinksSource}`;

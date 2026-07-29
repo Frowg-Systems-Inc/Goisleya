@@ -77,7 +77,7 @@ def test_catalog_dispatch_and_methods_are_complete():
     command_start = MAIN.index("CommandPaletteActions =")
     command_end = MAIN.index("];", command_start)
     ids = re.findall(r'new\("([^"]+)"', MAIN[command_start:command_end])
-    assert len(ids) == 111
+    assert len(ids) == 117
     assert len(ids) == len(set(ids))
 
     contracts = {
