@@ -97,7 +97,33 @@ internal readonly record struct NextMoveRecommendation(
 
 internal static class NextMoveLogic
 {
-    internal static NextMoveRecommendation Evaluate(NextMoveSnapshot raw)
+    /// <summary>
+    /// The single highest-priority recommendation — identical to the historical
+    /// first-match cascade, now expressed as the top of the deterministic
+    /// stacked-guidance ranking (<see cref="EvaluateStacked"/>).
+    /// </summary>
+    internal static NextMoveRecommendation Evaluate(NextMoveSnapshot raw) =>
+        EvaluateStacked(raw).Top;
+
+    /// <summary>
+    /// The stacked view: every active condition-driven recommendation ranked by
+    /// the declared priority ladder, bounded by <paramref name="maxShown"/>,
+    /// with an honest "+N more" overflow for whatever the slot cannot show.
+    /// </summary>
+    internal static StackedGuidanceView EvaluateStacked(NextMoveSnapshot raw, int maxShown = 1) =>
+        StackedGuidanceLogic.Rank(CollectCandidates(raw), maxShown);
+
+    /// <summary>
+    /// Collects every competing recommendation for the current snapshot. The
+    /// branch order and priorities below are the historical cascade ladder
+    /// (safety &gt; vitals-critical &gt; timers &gt; planners &gt; informational),
+    /// so the ranked top is always the same recommendation the cascade returned.
+    /// The ambient tail (route following, Life Run objective, position waiting,
+    /// start-a-run, stay-oriented) is default content, not competition: it only
+    /// produces a candidate when no condition-driven branch fired, exactly one,
+    /// in the original cascade order.
+    /// </summary>
+    internal static IReadOnlyList<NextMoveRecommendation> CollectCandidates(NextMoveSnapshot raw)
     {
         var survivalLabel = Clean(raw.SurvivalLabel, "SURVIVAL ISSUE");
         var survivalPriority = Clean(raw.SurvivalPriority, "OPEN SURVIVAL RESPONSE");
@@ -106,34 +132,36 @@ internal static class NextMoveLogic
         var waypointDistance = SafeDistance(raw.WaypointDistance);
         var encounterMotion = CleanToken(raw.EncounterMotion);
         var waypointTrend = CleanToken(raw.WaypointTrend);
+        var candidates = new List<NextMoveRecommendation>();
 
         if (raw.StreamerMode)
         {
-            return new NextMoveRecommendation(
+            candidates.Add(new NextMoveRecommendation(
                 "HIDDEN",
                 "NEXT MOVE HIDDEN",
                 "Private live and Life Run context is redacted in Streamer Mode.",
                 string.Empty,
                 "HIDDEN",
                 0,
-                NextMoveTone.Neutral);
+                NextMoveTone.Neutral));
+            return candidates;
         }
 
         if (raw.SurvivalUrgency >= 3)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "SURVIVAL",
                 survivalPriority,
                 $"{survivalLabel} is the highest-priority reported condition.",
                 "survival-assistant",
                 "OPEN SURVIVAL",
                 1000,
-                NextMoveTone.Critical);
+                NextMoveTone.Critical));
         }
 
         if (raw.CoreVitalsUrgency >= 3)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "VITALS",
                 Clean(raw.CoreVitalsHeading, "CHECK CORE VITALS"),
                 CleanSentence(raw.CoreVitalsDetail,
@@ -141,7 +169,7 @@ internal static class NextMoveLogic
                 "core-vitals",
                 "OPEN VITALS",
                 975,
-                NextMoveTone.Critical);
+                NextMoveTone.Critical));
         }
 
         var closeContact = encounterDistance is <= 10;
@@ -155,29 +183,31 @@ internal static class NextMoveLogic
             var contactPicture = $"Authorized contact {encounterDistance:0.0} MU{directionText}{motion}";
             if (!raw.SelfAvailable)
             {
-                return Pick(
+                candidates.Add(Pick(
                     "CONTACT",
                     "CREATE DISTANCE",
                     $"{contactPicture}; your live position is still calibrating.",
                     "players",
                     "OPEN CONTACTS",
                     950,
-                    NextMoveTone.Critical);
+                    NextMoveTone.Critical));
             }
-
-            return Pick(
-                "CONTACT",
-                "CREATE DISTANCE",
-                $"{contactPicture}; plan a clear route away.",
-                "escape-route",
-                "PLAN ESCAPE",
-                950,
-                NextMoveTone.Critical);
+            else
+            {
+                candidates.Add(Pick(
+                    "CONTACT",
+                    "CREATE DISTANCE",
+                    $"{contactPicture}; plan a clear route away.",
+                    "escape-route",
+                    "PLAN ESCAPE",
+                    950,
+                    NextMoveTone.Critical));
+            }
         }
 
         if (raw.ManualSightingActive && raw.ManualSightingUrgency >= 3)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "SIGHTING",
                 Clean(raw.ManualSightingHeading, "CREATE SPACE"),
                 CleanSentence(raw.ManualSightingDetail,
@@ -185,12 +215,12 @@ internal static class NextMoveLogic
                 "sighting-check",
                 "UPDATE SIGHTING",
                 940,
-                NextMoveTone.Critical);
+                NextMoveTone.Critical));
         }
 
         if (raw.RestartWatchActive && raw.RestartWatchRemainingSeconds <= 60)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "RESTART",
                 Clean(raw.RestartWatchHeading, "SAFE LOGOUT NOW"),
                 CleanSentence(raw.RestartWatchDetail,
@@ -198,24 +228,24 @@ internal static class NextMoveLogic
                 CleanToken(raw.RestartWatchActionId),
                 Clean(raw.RestartWatchActionLabel, "START LOGOUT"),
                 925,
-                NextMoveTone.Critical);
+                NextMoveTone.Critical));
         }
 
         if (raw.SurvivalUrgency > 0)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "SURVIVAL",
                 survivalPriority,
                 $"{survivalLabel} is still active; keep the recovery steps visible.",
                 "survival-assistant",
                 "OPEN SURVIVAL",
                 900,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.RestartWatchActive && raw.RestartWatchRemainingSeconds <= 120)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "RESTART",
                 Clean(raw.RestartWatchHeading, "PREPARE SAFE LOGOUT"),
                 CleanSentence(raw.RestartWatchDetail,
@@ -223,12 +253,12 @@ internal static class NextMoveLogic
                 CleanToken(raw.RestartWatchActionId),
                 Clean(raw.RestartWatchActionLabel, "START LOGOUT"),
                 890,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.CoreVitalsUrgency > 0)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "VITALS",
                 Clean(raw.CoreVitalsHeading, "CHECK CORE VITALS"),
                 CleanSentence(raw.CoreVitalsDetail,
@@ -236,12 +266,12 @@ internal static class NextMoveLogic
                 "core-vitals",
                 "OPEN VITALS",
                 875,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.ResourceTrendWarning)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "RESOURCES",
                 Clean(raw.ResourceTrendHeading, "RESOURCE TREND WARNING"),
                 CleanSentence(raw.ResourceTrendDetail,
@@ -249,12 +279,12 @@ internal static class NextMoveLogic
                 "core-vitals",
                 "OPEN VITALS",
                 860,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.ShorelineCheckActive && raw.ShorelineCheckSeverity >= 2)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "SHORELINE",
                 Clean(raw.ShorelineCheckHeading, "CHECK THE WATERLINE"),
                 CleanSentence(raw.ShorelineCheckDetail,
@@ -262,12 +292,12 @@ internal static class NextMoveLogic
                 CleanToken(raw.ShorelineCheckActionId),
                 Clean(raw.ShorelineCheckActionLabel, "OPEN CHECK"),
                 859,
-                raw.ShorelineCheckSeverity >= 3 ? NextMoveTone.Critical : NextMoveTone.Warning);
+                raw.ShorelineCheckSeverity >= 3 ? NextMoveTone.Critical : NextMoveTone.Warning));
         }
 
         if (raw.WaterCrossingActive && raw.WaterCrossingSeverity >= 2)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "CROSSING",
                 Clean(raw.WaterCrossingHeading, "CHECK THE WATER CROSSING"),
                 CleanSentence(raw.WaterCrossingDetail,
@@ -275,12 +305,12 @@ internal static class NextMoveLogic
                 CleanToken(raw.WaterCrossingActionId),
                 Clean(raw.WaterCrossingActionLabel, "OPEN CHECK"),
                 858,
-                raw.WaterCrossingSeverity >= 3 ? NextMoveTone.Critical : NextMoveTone.Warning);
+                raw.WaterCrossingSeverity >= 3 ? NextMoveTone.Critical : NextMoveTone.Warning));
         }
 
         if (raw.RestartWatchActive && raw.RestartWatchRemainingSeconds <= 300)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "RESTART",
                 Clean(raw.RestartWatchHeading, "FINISH AND FIND COVER"),
                 CleanSentence(raw.RestartWatchDetail,
@@ -288,7 +318,7 @@ internal static class NextMoveLogic
                 CleanToken(raw.RestartWatchActionId),
                 Clean(raw.RestartWatchActionLabel, "OPEN LOGOUT"),
                 855,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.PackSpreadAlertActive)
@@ -298,19 +328,19 @@ internal static class NextMoveLogic
             var packSubject = friendCount > 0
                 ? $"{friendCount} authorized friend{(friendCount == 1 ? string.Empty : "s")}"
                 : "The authorized pack";
-            return Pick(
+            candidates.Add(Pick(
                 "PACK",
                 "REGROUP THE PACK",
                 $"{packSubject} {(friendCount <= 1 ? "is" : "are")} spread {spread}.",
                 "players",
                 "OPEN PACK",
                 850,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.ManualSightingActive && raw.ManualSightingUrgency >= 2)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "SIGHTING",
                 Clean(raw.ManualSightingHeading, "HOLD AN EXIT"),
                 CleanSentence(raw.ManualSightingDetail,
@@ -318,37 +348,37 @@ internal static class NextMoveLogic
                 "sighting-check",
                 "UPDATE SIGHTING",
                 845,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.WaypointActive && string.Equals(waypointTrend, "away", StringComparison.Ordinal))
         {
             var distance = waypointDistance is null ? string.Empty : $" · {waypointDistance:0.0} MU";
-            return Pick(
+            candidates.Add(Pick(
                 "ROUTE",
                 "CORRECT COURSE",
                 $"The active destination is getting farther away{distance}.",
                 "routes",
                 "OPEN ROUTE",
                 800,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.SoonestTimerSeconds is >= 0 and <= 60)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "TIMER",
                 "TIMER DUE SOON",
                 $"The next active timer reaches zero in {FormatDuration(raw.SoonestTimerSeconds)}.",
                 "timers",
                 "OPEN TIMERS",
                 750,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.RestartWatchActive)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "RESTART",
                 Clean(raw.RestartWatchHeading, "RESTART REPORTED"),
                 CleanSentence(raw.RestartWatchDetail,
@@ -356,12 +386,12 @@ internal static class NextMoveLogic
                 CleanToken(raw.RestartWatchActionId),
                 Clean(raw.RestartWatchActionLabel, "OPEN WATCH"),
                 745,
-                NextMoveTone.Active);
+                NextMoveTone.Active));
         }
 
         if (raw.LifeRunActive && raw.LifeTransitionPending)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "LIFE",
                 Clean(raw.LifeTransitionHeading, "CHECK NEW DINOSAUR"),
                 CleanSentence(raw.LifeTransitionDetail,
@@ -369,12 +399,12 @@ internal static class NextMoveLogic
                 "life-run",
                 "REVIEW LIFE",
                 740,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.LifeRunActive && raw.GrowthGatePending)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "GROWTH",
                 Clean(raw.GrowthGateHeading, "GROWTH GATE REACHED"),
                 CleanSentence(raw.GrowthGateDetail,
@@ -382,12 +412,12 @@ internal static class NextMoveLogic
                 CleanToken(raw.GrowthGateActionId),
                 Clean(raw.GrowthGateActionLabel, "OPEN GROWTH"),
                 735,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.ApproachBriefActive && raw.ApproachBriefUrgency >= 2)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "APPROACH",
                 Clean(raw.ApproachBriefHeading, "CHECK THE APPROACH"),
                 CleanSentence(raw.ApproachBriefDetail,
@@ -395,12 +425,12 @@ internal static class NextMoveLogic
                 CleanToken(raw.ApproachBriefActionId),
                 Clean(raw.ApproachBriefActionLabel, "OPEN ROUTE"),
                 730,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.ShorelineCheckActive)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "SHORELINE",
                 Clean(raw.ShorelineCheckHeading, "CHECK THE WATERLINE"),
                 CleanSentence(raw.ShorelineCheckDetail,
@@ -408,12 +438,12 @@ internal static class NextMoveLogic
                 CleanToken(raw.ShorelineCheckActionId),
                 Clean(raw.ShorelineCheckActionLabel, "OPEN CHECK"),
                 729,
-                raw.ShorelineCheckSeverity > 0 ? NextMoveTone.Warning : NextMoveTone.Active);
+                raw.ShorelineCheckSeverity > 0 ? NextMoveTone.Warning : NextMoveTone.Active));
         }
 
         if (raw.WaterCrossingActive)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "CROSSING",
                 Clean(raw.WaterCrossingHeading, "COMPLETE THE WATER CHECK"),
                 CleanSentence(raw.WaterCrossingDetail,
@@ -421,12 +451,12 @@ internal static class NextMoveLogic
                 CleanToken(raw.WaterCrossingActionId),
                 Clean(raw.WaterCrossingActionLabel, "OPEN CHECK"),
                 728,
-                raw.WaterCrossingSeverity > 0 ? NextMoveTone.Warning : NextMoveTone.Active);
+                raw.WaterCrossingSeverity > 0 ? NextMoveTone.Warning : NextMoveTone.Active));
         }
 
         if (raw.FieldConditionsWarning)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "FIELD",
                 Clean(raw.FieldConditionsHeading, "CHECK FIELD CONDITIONS"),
                 CleanSentence(raw.FieldConditionsDetail,
@@ -434,37 +464,37 @@ internal static class NextMoveLogic
                 "field-conditions",
                 "OPEN CONDITIONS",
                 725,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.LifeRunActive && raw.SpeciesMismatch)
         {
             var speciesName = Clean(raw.LiveSpeciesName, "CURRENT DINOSAUR").ToUpperInvariant();
-            return Pick(
+            candidates.Add(Pick(
                 "PROFILE",
                 "SYNC LIVE SPECIES",
                 $"The fresh current dinosaur is {speciesName}; saved Life Run species guidance differs.",
                 "diet-coach",
                 "SYNC SPECIES",
                 710,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.LifeRunActive && raw.GrowthPaused)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "GROWTH",
                 "RESTORE GROWTH",
                 "The manual Growth Clock is paused; restore food and water before resuming it.",
                 "growth-clock",
                 "OPEN GROWTH",
                 700,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.ApproachBriefActive)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "APPROACH",
                 Clean(raw.ApproachBriefHeading, "CHECK THE APPROACH"),
                 CleanSentence(raw.ApproachBriefDetail,
@@ -472,7 +502,7 @@ internal static class NextMoveLogic
                 CleanToken(raw.ApproachBriefActionId),
                 Clean(raw.ApproachBriefActionLabel, "OPEN ROUTE"),
                 690,
-                NextMoveTone.Active);
+                NextMoveTone.Active));
         }
 
         if (raw.LifeRunActive
@@ -480,14 +510,14 @@ internal static class NextMoveLogic
             && raw.PrimeConfirmed
             && !raw.ElderConfirmed)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "ELDER",
                 "VERIFY ELDER",
                 "Growth reached 100%; confirm Elder and Entomb availability in game.",
                 "elder-lineage",
                 "OPEN ELDER",
                 675,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.LifeRunActive
@@ -495,59 +525,65 @@ internal static class NextMoveLogic
             && raw.PrimeConditionsReady
             && !raw.PrimeConfirmed)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "PRIME",
                 "VERIFY PRIME",
                 "The plan and growth gate are ready; verify the fourth mutation slot in game.",
                 "prime-planner",
                 "OPEN PRIME",
                 650,
-                NextMoveTone.Warning);
+                NextMoveTone.Warning));
         }
 
         if (raw.LifeRunActive && raw.NestActive)
         {
             var phase = Clean(raw.NestPhase, "NEST");
             var nextAction = CleanSentence(raw.NestNextAction, "Continue the current nest phase.");
-            return Pick(
+            candidates.Add(Pick(
                 "NEST",
                 $"NEST · {phase}",
                 nextAction,
                 "nest-planner",
                 "OPEN NEST",
                 600,
-                NextMoveTone.Active);
+                NextMoveTone.Active));
         }
 
+        if (raw.WaypointActive && waypointDistance is <= 20)
+        {
+            candidates.Add(Pick(
+                "ROUTE",
+                "ARRIVAL SOON",
+                $"The active destination is {waypointDistance:0.0} MU away; prepare to stop or advance.",
+                "routes",
+                "OPEN ROUTE",
+                550,
+                NextMoveTone.Active));
+        }
+
+        if (candidates.Count > 0)
+        {
+            return candidates;
+        }
+
+        // Ambient fallback — default content, never counted as competition.
+        // First match wins, in the original cascade order.
         if (raw.WaypointActive)
         {
-            if (waypointDistance is <= 20)
-            {
-                return Pick(
-                    "ROUTE",
-                    "ARRIVAL SOON",
-                    $"The active destination is {waypointDistance:0.0} MU away; prepare to stop or advance.",
-                    "routes",
-                    "OPEN ROUTE",
-                    550,
-                    NextMoveTone.Active);
-            }
-
             var distance = waypointDistance is null ? "Distance is waiting for your live marker." : $"{waypointDistance:0.0} MU remain.";
-            return Pick(
+            candidates.Add(Pick(
                 "ROUTE",
                 "STAY ON ROUTE",
                 distance,
                 "routes",
                 "OPEN ROUTE",
                 500,
-                NextMoveTone.Active);
+                NextMoveTone.Active));
         }
-
-        if (raw.LifeRunActive)
+        else if (raw.LifeRunActive)
         {
             var nextObjective = Clean(raw.LifeRunNextObjective, "REVIEW THE CURRENT LIFE");
-            return Pick(
+            candidates.Add(Pick(
                 "LIFE",
                 nextObjective == "ALL TRACKED" ? "PROTECT THE LINEAGE" : nextObjective,
                 nextObjective == "ALL TRACKED"
@@ -556,41 +592,43 @@ internal static class NextMoveLogic
                 "life-run",
                 "OPEN LIFE RUN",
                 400,
-                NextMoveTone.Active);
+                NextMoveTone.Active));
         }
-
-        if (raw.LiveMapServicesActive && !raw.SelfAvailable)
+        else if (raw.LiveMapServicesActive && !raw.SelfAvailable)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "RECOVERY",
                 "PLAYER POSITION WAITING",
                 "Follow will resume automatically; recovery tools retain only authorized last-position context.",
                 "recovery",
                 "OPEN RECOVERY",
                 300,
-                NextMoveTone.Neutral);
+                NextMoveTone.Neutral));
         }
-
-        if (!raw.LifeRunActive)
+        else if (!raw.LifeRunActive)
         {
-            return Pick(
+            candidates.Add(Pick(
                 "LIFE",
                 "START A LIFE RUN",
                 "Create a private manual run to connect growth, diet, nesting, mutations, and Elder progress.",
                 "life-run",
                 "OPEN LIFE RUN",
                 200,
-                NextMoveTone.Neutral);
+                NextMoveTone.Neutral));
+        }
+        else
+        {
+            candidates.Add(Pick(
+                "NAV",
+                "STAY ORIENTED",
+                "No urgent condition is active; keep follow, heading, and nearby-place context ready.",
+                "navigation",
+                "OPEN NAVIGATION",
+                100,
+                NextMoveTone.Neutral));
         }
 
-        return Pick(
-            "NAV",
-            "STAY ORIENTED",
-            "No urgent condition is active; keep follow, heading, and nearby-place context ready.",
-            "navigation",
-            "OPEN NAVIGATION",
-            100,
-            NextMoveTone.Neutral);
+        return candidates;
     }
 
     internal static string CompactSummary(NextMoveRecommendation recommendation) =>
