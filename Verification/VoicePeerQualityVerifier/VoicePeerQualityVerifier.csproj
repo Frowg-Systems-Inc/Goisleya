@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>VoicePeerQualityVerifier</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\VoiceIntegrationLogic.cs" Link="VoiceIntegrationLogic.cs" />
+    <Compile Include="..\..\BurntHud\VoicePeerQualityLogic.cs" Link="VoicePeerQualityLogic.cs" />
+  </ItemGroup>
+</Project>

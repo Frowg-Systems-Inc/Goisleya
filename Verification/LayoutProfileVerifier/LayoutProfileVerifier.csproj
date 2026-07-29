@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>LayoutProfileVerifier</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\QuickKeysLogic.cs" Link="QuickKeysLogic.cs" />
+    <Compile Include="..\..\BurntHud\LayoutProfileLogic.cs" Link="LayoutProfileLogic.cs" />
+  </ItemGroup>
+</Project>

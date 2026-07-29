@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>EncounterWatchlistVerifier</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\SteamFriendLogic.cs" Link="SteamFriendLogic.cs" />
+    <Compile Include="..\..\BurntHud\EncounterWatchlistLogic.cs" Link="EncounterWatchlistLogic.cs" />
+  </ItemGroup>
+</Project>
