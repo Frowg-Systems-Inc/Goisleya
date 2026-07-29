@@ -2,7 +2,11 @@ param(
     [string]$ArchivePath = "",
     [string]$ServerArchivePath = "",
     [string]$SiteRoot = "",
-    [string]$ReleaseNotes = "Automatic update notifications and verified one-click installation."
+    [string]$ReleaseNotes = "Automatic update notifications and verified one-click installation.",
+    [string]$Version = "",
+    [ValidateSet("stable", "beta")]
+    [string]$Channel = "stable",
+    [string]$DeltaArchivePath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,4 +27,7 @@ if (-not (Test-Path -LiteralPath $siteUpdater -PathType Leaf)) {
     -ArchivePath $ArchivePath `
     -ServerArchivePath $ServerArchivePath `
     -SiteRoot $resolvedSiteRoot `
-    -ReleaseNotes $ReleaseNotes
+    -ReleaseNotes $ReleaseNotes `
+    -Version $Version `
+    -Channel $Channel `
+    -DeltaArchivePath $DeltaArchivePath

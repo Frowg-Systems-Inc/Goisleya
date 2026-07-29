@@ -1,17 +1,30 @@
 param(
     [string]$Configuration = "Release",
-    [string]$PreviousClientArchive = ""
+    [string]$PreviousClientArchive = "",
+    # Optional explicit release version (X.Y.Z) chosen by the release workflow.
+    # When supplied it wins over the csproj Version and is stamped into the
+    # build via global MSBuild properties; when omitted the csproj is read
+    # exactly as before.
+    [string]$Version = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $workspace = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $artifacts = Join-Path $workspace "artifacts"
-$projectText = Get-Content -LiteralPath (Join-Path $workspace "BurntHud\BurntHud.csproj") -Raw
-if ($projectText -notmatch '<Version>(?<version>\d+\.\d+\.\d+)</Version>') {
-    throw "BurntHud.csproj does not declare a comparable Version."
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    if ($Version -notmatch '^\d{1,4}\.\d{1,4}\.\d{1,6}$') {
+        throw "-Version must be a three-part Isley version (X.Y.Z); got '$Version'."
+    }
+    $version = $Version
 }
-$version = $Matches['version']
+else {
+    $projectText = Get-Content -LiteralPath (Join-Path $workspace "BurntHud\BurntHud.csproj") -Raw
+    if ($projectText -notmatch '<Version>(?<version>\d+\.\d+\.\d+)</Version>') {
+        throw "BurntHud.csproj does not declare a comparable Version."
+    }
+    $version = $Matches['version']
+}
 $releaseRoot = Join-Path $artifacts "Isley-$version-release"
 $clientStage = Join-Path $releaseRoot "client"
 $serverStage = Join-Path $releaseRoot "server-network"
@@ -44,11 +57,26 @@ foreach ($archive in @($clientArchive, $serverArchive)) {
 New-Item -ItemType Directory -Path $clientStage -Force | Out-Null
 New-Item -ItemType Directory -Path $serverStage -Force | Out-Null
 
-& dotnet publish (Join-Path $workspace "BurntHud\BurntHud.csproj") `
-    -c $Configuration `
-    -r win-x64 `
-    --self-contained false `
-    -o $clientStage
+$clientPublishArguments = @(
+    (Join-Path $workspace "BurntHud\BurntHud.csproj"),
+    "-c", $Configuration,
+    "-r", "win-x64",
+    "--self-contained", "false",
+    "-o", $clientStage
+)
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    # The csproj pins <Version>/<AssemblyVersion>/<FileVersion>/<InformationalVersion>;
+    # command-line global properties win over project declarations, so the
+    # release build is stamped with the workflow-chosen version without
+    # editing product files.
+    $clientPublishArguments += @(
+        "-p:Version=$version",
+        "-p:AssemblyVersion=$version.0",
+        "-p:FileVersion=$version.0",
+        "-p:InformationalVersion=$version"
+    )
+}
+& dotnet publish @clientPublishArguments
 if ($LASTEXITCODE -ne 0) {
     throw "The Isley desktop publish failed."
 }
@@ -424,16 +452,38 @@ if ($null -ne $deltaArchive) {
     $deltaSha256 = (Get-FileHash -LiteralPath $deltaArchive -Algorithm SHA256).Hash
 }
 
+$clientBytes = (Get-Item -LiteralPath $clientArchive).Length
+$clientSha256 = (Get-FileHash -LiteralPath $clientArchive -Algorithm SHA256).Hash
+$serverBytes = (Get-Item -LiteralPath $serverArchive).Length
+$serverSha256 = (Get-FileHash -LiteralPath $serverArchive -Algorithm SHA256).Hash
+
+# SHA256SUMS.txt (GNU sha256sum -c compatible: lowercase hash, " *<name>")
+# covers every archive this run produced; CI re-verifies it before the
+# GitHub Release is published.
+$sumsEntries = @(
+    ("{0} *{1}" -f $clientSha256.ToLowerInvariant(), [System.IO.Path]::GetFileName($clientArchive))
+    ("{0} *{1}" -f $serverSha256.ToLowerInvariant(), [System.IO.Path]::GetFileName($serverArchive))
+)
+if ($null -ne $deltaArchive) {
+    $sumsEntries += "{0} *{1}" -f $deltaSha256.ToLowerInvariant(), [System.IO.Path]::GetFileName($deltaArchive)
+}
+$sumsPath = Join-Path $artifacts "SHA256SUMS.txt"
+[System.IO.File]::WriteAllText(
+    $sumsPath,
+    ($sumsEntries -join "`n") + "`n",
+    [System.Text.UTF8Encoding]::new($false))
+
 [pscustomobject]@{
     Version = $version
     ClientArchive = $clientArchive
-    ClientBytes = (Get-Item -LiteralPath $clientArchive).Length
-    ClientSha256 = (Get-FileHash -LiteralPath $clientArchive -Algorithm SHA256).Hash
+    ClientBytes = $clientBytes
+    ClientSha256 = $clientSha256
     ServerArchive = $serverArchive
-    ServerBytes = (Get-Item -LiteralPath $serverArchive).Length
-    ServerSha256 = (Get-FileHash -LiteralPath $serverArchive -Algorithm SHA256).Hash
+    ServerBytes = $serverBytes
+    ServerSha256 = $serverSha256
     DeltaFromVersion = $deltaFromVersion
     DeltaArchive = $deltaArchive
     DeltaBytes = $deltaBytes
     DeltaSha256 = $deltaSha256
+    SumsPath = $sumsPath
 }

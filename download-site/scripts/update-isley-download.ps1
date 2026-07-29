@@ -2,7 +2,11 @@ param(
     [string]$ArchivePath = "",
     [string]$ServerArchivePath = "",
     [string]$SiteRoot = "",
-    [string]$ReleaseNotes = "Automatic update notifications and verified one-click installation."
+    [string]$ReleaseNotes = "Automatic update notifications and verified one-click installation.",
+    [string]$Version = "",
+    [ValidateSet("stable", "beta")]
+    [string]$Channel = "stable",
+    [string]$DeltaArchivePath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -113,6 +117,22 @@ finally {
     $zip.Dispose()
 }
 
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    # The workflow resolves the release version (bump or override) up front and
+    # stamps the build with it, so the packaged assembly must already agree.
+    # A mismatch here means the pipeline drifted; never publish a manifest whose
+    # version outruns the archive (clients refuse staged builds older than the
+    # manifest version).
+    if ($Version -notmatch '^\d{1,4}\.\d{1,4}\.\d{1,6}$') {
+        throw "-Version must be a three-part Isley version (X.Y.Z); got '$Version'."
+    }
+    if ($Version -ne $releaseVersion) {
+        throw ("The requested release version {0} does not match the packaged build {1}; " +
+            "package first with scripts\package-isley-1.3.ps1 -Version {0}.") -f `
+            $Version, $releaseVersion
+    }
+}
+
 $serverHash = $null
 $serverBytes = $null
 if ($null -ne $resolvedServerArchive) {
@@ -152,66 +172,119 @@ if ($archiveBytes -lt 7MB -or $archiveBytes -gt 15MB) {
 $archiveSize = "{0:0.00} MB" -f ($archiveBytes / 1MB)
 $releaseDate = Get-Date -Format "MMMM d, yyyy"
 
-$publicArchive = Join-Path $resolvedSiteRoot "public\Isley-Windows-x64.zip"
+$isBeta = $Channel -eq "beta"
+# Stable publishes to the pinned stable paths; beta publishes to the pinned
+# beta paths (IsleyReleaseLogic.BetaReleaseEndpoint / BetaDownloadUrl) and
+# leaves every stable file untouched.
+$publicArchiveName = if ($isBeta) { "Isley-Windows-x64-beta.zip" } else { "Isley-Windows-x64.zip" }
+$publicArchive = Join-Path $resolvedSiteRoot "public\$publicArchiveName"
 Copy-Item -LiteralPath $resolvedArchive -Destination $publicArchive -Force
-if ($null -ne $resolvedServerArchive) {
+if (-not $isBeta -and $null -ne $resolvedServerArchive) {
     Copy-Item -LiteralPath $resolvedServerArchive `
         -Destination (Join-Path $resolvedSiteRoot "public\Isley-Server-Network.zip") `
         -Force
 }
 
-$manifestPath = Join-Path $resolvedSiteRoot "public\Isley-release.json"
-$manifest = [ordered]@{
+# Optional delta offer. The client contract (docs/ISLEY_UPDATER_DELTA.md §3)
+# is exactly four fields; an absent block means "no delta offered".
+$deltaBlock = $null
+$resolvedDelta = $null
+$deltaFromVersion = $null
+$deltaSha256 = $null
+$deltaBytes = $null
+if (-not [string]::IsNullOrWhiteSpace($DeltaArchivePath)) {
+    $resolvedDelta = (Resolve-Path -LiteralPath $DeltaArchivePath).Path
+    $deltaName = [System.IO.Path]::GetFileName($resolvedDelta)
+    if ($deltaName -notmatch `
+        '^Isley-delta-(?<from>\d{1,4}\.\d{1,4}\.\d{1,6})-(?<to>\d{1,4}\.\d{1,4}\.\d{1,6})\.zip$') {
+        throw "The delta archive name '$deltaName' does not match Isley-delta-<from>-<to>.zip."
+    }
+    $deltaFromVersion = $Matches['from']
+    if ($Matches['to'] -ne $releaseVersion) {
+        throw "The delta archive targets $($Matches['to']) but this release is $releaseVersion."
+    }
+    if ([Version]$deltaFromVersion -ge [Version]$releaseVersion) {
+        throw "The delta base $deltaFromVersion is not older than $releaseVersion."
+    }
+    $deltaSha256 = (Get-FileHash -LiteralPath $resolvedDelta -Algorithm SHA256).Hash
+    $deltaBytes = (Get-Item -LiteralPath $resolvedDelta).Length
+    if ($deltaBytes -lt 256 -or $deltaBytes -gt 100MB) {
+        throw "The delta archive size is outside the client's accepted bounds (256 B - 100 MB)."
+    }
+    Copy-Item -LiteralPath $resolvedDelta `
+        -Destination (Join-Path $resolvedSiteRoot "public\$deltaName") `
+        -Force
+    $deltaBlock = [ordered]@{
+        fromVersion = $deltaFromVersion
+        url = "https://isley-download.gmith.chatgpt.site/$deltaName"
+        sha256 = $deltaSha256
+        bytes = $deltaBytes
+    }
+}
+
+$manifestName = if ($isBeta) { "Isley-release-beta.json" } else { "Isley-release.json" }
+$manifestPath = Join-Path $resolvedSiteRoot "public\$manifestName"
+$manifestObject = [ordered]@{
     manifestVersion = 1
-    channel = "stable"
+    channel = $Channel
     version = $releaseVersion
     publishedAt = [DateTimeOffset]::UtcNow.ToString("O")
-    downloadUrl = "https://isley-download.gmith.chatgpt.site/Isley-Windows-x64.zip"
+    downloadUrl = "https://isley-download.gmith.chatgpt.site/$publicArchiveName"
     sha256 = $hash
     bytes = $archiveBytes
     notes = $ReleaseNotes
     required = $false
-} | ConvertTo-Json
+}
+if ($null -ne $deltaBlock) {
+    $manifestObject["delta"] = $deltaBlock
+}
+$manifest = $manifestObject | ConvertTo-Json
 
-$pagePath = Join-Path $resolvedSiteRoot "app\page.tsx"
-$page = [System.IO.File]::ReadAllText($pagePath)
-$page = [regex]::Replace(
-    $page,
-    'const ARCHIVE_SIZE = "[^"]+";',
-    "const ARCHIVE_SIZE = `"$archiveSize`";")
-$page = [regex]::Replace(
-    $page,
-    'const RELEASE_VERSION = "[^"]+";',
-    "const RELEASE_VERSION = `"$releaseVersion`";")
-$page = [regex]::Replace(
-    $page,
-    'const RELEASE_DATE = "[^"]+";',
-    "const RELEASE_DATE = `"$releaseDate`";")
-$page = [regex]::Replace(
-    $page,
-    'const SHA256 =\s*"[A-F0-9]{64}";',
-    "const SHA256 =`r`n  `"$hash`";")
+if (-not $isBeta) {
+    # The public download page and its rendered-html contract describe the
+    # stable release only; beta runs leave them untouched.
+    $pagePath = Join-Path $resolvedSiteRoot "app\page.tsx"
+    $page = [System.IO.File]::ReadAllText($pagePath)
+    $page = [regex]::Replace(
+        $page,
+        'const ARCHIVE_SIZE = "[^"]+";',
+        "const ARCHIVE_SIZE = `"$archiveSize`";")
+    $page = [regex]::Replace(
+        $page,
+        'const RELEASE_VERSION = "[^"]+";',
+        "const RELEASE_VERSION = `"$releaseVersion`";")
+    $page = [regex]::Replace(
+        $page,
+        'const RELEASE_DATE = "[^"]+";',
+        "const RELEASE_DATE = `"$releaseDate`";")
+    $page = [regex]::Replace(
+        $page,
+        'const SHA256 =\s*"[A-F0-9]{64}";',
+        "const SHA256 =`r`n  `"$hash`";")
 
-$testPath = Join-Path $resolvedSiteRoot "tests\rendered-html.test.mjs"
-$test = [System.IO.File]::ReadAllText($testPath)
-$test = [regex]::Replace(
-    $test,
-    'const EXPECTED_CLIENT_SHA256 =\s*"[A-F0-9]{64}";',
-    "const EXPECTED_CLIENT_SHA256 =`r`n  `"$hash`";")
-if ($null -ne $serverHash) {
+    $testPath = Join-Path $resolvedSiteRoot "tests\rendered-html.test.mjs"
+    $test = [System.IO.File]::ReadAllText($testPath)
     $test = [regex]::Replace(
         $test,
-        'const EXPECTED_SERVER_SHA256 =\s*"[A-F0-9]{64}";',
-        "const EXPECTED_SERVER_SHA256 =`r`n  `"$serverHash`";")
+        'const EXPECTED_CLIENT_SHA256 =\s*"[A-F0-9]{64}";',
+        "const EXPECTED_CLIENT_SHA256 =`r`n  `"$hash`";")
+    if ($null -ne $serverHash) {
+        $test = [regex]::Replace(
+            $test,
+            'const EXPECTED_SERVER_SHA256 =\s*"[A-F0-9]{64}";',
+            "const EXPECTED_SERVER_SHA256 =`r`n  `"$serverHash`";")
+    }
+    $test = [regex]::Replace(
+        $test,
+        'version:\s*"\d+\.\d+\.\d+",',
+        "version: `"$releaseVersion`",")
+
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    [System.IO.File]::WriteAllText($pagePath, $page, $utf8)
+    [System.IO.File]::WriteAllText($testPath, $test, $utf8)
 }
-$test = [regex]::Replace(
-    $test,
-    'version:\s*"\d+\.\d+\.\d+",',
-    "version: `"$releaseVersion`",")
 
 $utf8 = [System.Text.UTF8Encoding]::new($false)
-[System.IO.File]::WriteAllText($pagePath, $page, $utf8)
-[System.IO.File]::WriteAllText($testPath, $test, $utf8)
 [System.IO.File]::WriteAllText($manifestPath, $manifest, $utf8)
 
 $publishedHash = (Get-FileHash -LiteralPath $publicArchive -Algorithm SHA256).Hash
@@ -226,9 +299,14 @@ if ($publishedHash -ne $hash) {
     DisplaySize = $archiveSize
     Sha256 = $hash
     Version = $releaseVersion
+    Channel = $Channel
     ReleaseDate = $releaseDate
     ManifestPath = $manifestPath
     ServerArchive = $resolvedServerArchive
     ServerBytes = $serverBytes
     ServerSha256 = $serverHash
+    DeltaArchive = $resolvedDelta
+    DeltaFromVersion = $deltaFromVersion
+    DeltaBytes = $deltaBytes
+    DeltaSha256 = $deltaSha256
 }
