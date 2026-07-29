@@ -25,7 +25,12 @@ internal static class Program
             Log(logPath, $"Starting update to {options.Version}.");
             ValidateOptions(options);
             WaitForIsleyToClose(options.ProcessId, logPath);
-            ApplyPackageWithBackup(options.SourceDirectory, options.TargetDirectory, logPath);
+            ApplyPackageWithBackup(
+                options.SourceDirectory,
+                options.TargetDirectory,
+                logPath,
+                options.DeltaMode,
+                options.Version);
             WriteResult(resultPath, true, options.Version, string.Empty);
             LaunchIsley(options.TargetDirectory, options.LaunchFile, logPath);
             Log(logPath, $"Update to {options.Version} completed.");
@@ -63,12 +68,23 @@ internal static class Program
             throw new ArgumentException("The update request was incomplete.");
         }
 
+        var deltaMode = false;
+        if (values.TryGetValue("--mode", out var mode))
+        {
+            if (!string.Equals(mode, "delta", StringComparison.Ordinal))
+            {
+                throw new ArgumentException("The update request used an unknown mode.");
+            }
+            deltaMode = true;
+        }
+
         return new UpdateOptions(
             processId,
             Path.GetFullPath(source),
             Path.GetFullPath(target),
             launch,
-            version);
+            version,
+            deltaMode);
     }
 
     private static void ValidateOptions(UpdateOptions options)
@@ -91,6 +107,14 @@ internal static class Program
                 StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("The update directories were not safe.");
+        }
+
+        if (options.DeltaMode
+            && !File.Exists(Path.Combine(
+                options.SourceDirectory,
+                "isley-delta-manifest.json")))
+        {
+            throw new InvalidOperationException("The delta update was missing its file list.");
         }
     }
 
@@ -119,7 +143,9 @@ internal static class Program
     private static void ApplyPackageWithBackup(
         string sourceDirectory,
         string targetDirectory,
-        string logPath)
+        string logPath,
+        bool deltaMode,
+        string expectedVersion)
     {
         var backupRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -129,8 +155,23 @@ internal static class Program
         Directory.CreateDirectory(backupRoot);
         try
         {
-            CopyPackage(sourceDirectory, targetDirectory, backupRoot, logPath);
-            RemoveOrphanedPackageFiles(sourceDirectory, targetDirectory, backupRoot, logPath);
+            CopyPackage(sourceDirectory, targetDirectory, backupRoot, logPath, deltaMode);
+            if (deltaMode)
+            {
+                // Delta packages only remove files named by their verified file
+                // list; the full-package orphan sweep would delete everything
+                // the delta did not carry, so it must not run here.
+                ApplyDeltaDeleteList(
+                    sourceDirectory,
+                    targetDirectory,
+                    backupRoot,
+                    logPath,
+                    expectedVersion);
+            }
+            else
+            {
+                RemoveOrphanedPackageFiles(sourceDirectory, targetDirectory, backupRoot, logPath);
+            }
             TryDeleteDirectory(backupRoot);
             Log(logPath, "Update files were applied and the rollback backup was cleared.");
         }
@@ -147,7 +188,8 @@ internal static class Program
         string sourceDirectory,
         string targetDirectory,
         string backupRoot,
-        string logPath)
+        string logPath,
+        bool deltaMode)
     {
         var sourceRoot = sourceDirectory.TrimEnd(Path.DirectorySeparatorChar)
                          + Path.DirectorySeparatorChar;
@@ -159,18 +201,20 @@ internal static class Program
             sourceDirectory,
             "*",
             SearchOption.AllDirectories);
-        if (files.Length < 20)
+        if (!deltaMode && files.Length < 20)
         {
             throw new InvalidDataException("The staged Isley package was incomplete.");
         }
 
+        var copied = 0;
         foreach (var sourceFile in files)
         {
             var relative = Path.GetRelativePath(sourceRoot, sourceFile);
             if (relative.Equals("IsleyData", StringComparison.OrdinalIgnoreCase)
                 || relative.StartsWith(
                     $"IsleyData{Path.DirectorySeparatorChar}",
-                    StringComparison.OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase)
+                || relative.Equals("isley-delta-manifest.json", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -194,8 +238,9 @@ internal static class Program
 
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             CopyWithRetry(sourceFile, destination);
+            copied++;
         }
-        Log(logPath, $"Copied {files.Length} package files with rollback backups.");
+        Log(logPath, $"Copied {copied} package files with rollback backups.");
     }
 
     private static void RestoreBackup(
@@ -316,6 +361,125 @@ internal static class Program
         }
     }
 
+    private static void ApplyDeltaDeleteList(
+        string sourceDirectory,
+        string targetDirectory,
+        string backupRoot,
+        string logPath,
+        string expectedVersion)
+    {
+        var manifestPath = Path.Combine(sourceDirectory, "isley-delta-manifest.json");
+        string json;
+        try
+        {
+            json = File.ReadAllText(manifestPath);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidDataException("The delta update file list could not be read.", exception);
+        }
+        if (json.Length > 64 * 1024)
+        {
+            throw new InvalidDataException("The delta update file list exceeded its safety limit.");
+        }
+
+        JsonElement root;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            root = document.RootElement.Clone();
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException("The delta update file list was not valid JSON.", exception);
+        }
+
+        if (root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("format", out var format)
+            || format.ValueKind != JsonValueKind.Number
+            || !format.TryGetInt32(out var formatVersion)
+            || formatVersion != 1
+            || !root.TryGetProperty("toVersion", out var toVersion)
+            || toVersion.ValueKind != JsonValueKind.String
+            || !string.Equals(toVersion.GetString(), expectedVersion, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("The delta update file list did not match the update.");
+        }
+
+        var targetRoot = targetDirectory.TrimEnd(Path.DirectorySeparatorChar)
+                         + Path.DirectorySeparatorChar;
+        var backupRootPath = backupRoot.TrimEnd(Path.DirectorySeparatorChar)
+                             + Path.DirectorySeparatorChar;
+        var removed = 0;
+        JsonElement[] entries =
+            root.TryGetProperty("deletedFiles", out var deletedFiles)
+            && deletedFiles.ValueKind == JsonValueKind.Array
+                ? deletedFiles.EnumerateArray().ToArray()
+                : Array.Empty<JsonElement>();
+        if (entries.Length > 2000)
+        {
+            throw new InvalidDataException("The delta update file list exceeded its safety limit.");
+        }
+
+        foreach (var entry in entries)
+        {
+            var relative = (entry.ValueKind == JsonValueKind.String
+                    ? entry.GetString() ?? string.Empty
+                    : string.Empty)
+                .Trim()
+                .Replace('/', Path.DirectorySeparatorChar);
+            if (relative.Length == 0
+                || relative.Length > 512
+                || Path.IsPathRooted(relative)
+                || relative.Split(
+                       new[] { Path.DirectorySeparatorChar },
+                       StringSplitOptions.RemoveEmptyEntries)
+                   .Any(part => part == "..")
+                || relative.Equals("IsleyData", StringComparison.OrdinalIgnoreCase)
+                || relative.StartsWith(
+                    $"IsleyData{Path.DirectorySeparatorChar}",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("The delta update file list contained an unsafe path.");
+            }
+
+            var fullPath = Path.GetFullPath(Path.Combine(targetDirectory, relative));
+            if (!fullPath.StartsWith(targetRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("The delta update file list escaped the install folder.");
+            }
+            if (!File.Exists(fullPath))
+            {
+                continue;
+            }
+
+            var backupPath = Path.GetFullPath(Path.Combine(backupRoot, relative));
+            if (!backupPath.StartsWith(backupRootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("The update backup path escaped the backup root.");
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
+            CopyWithRetry(fullPath, backupPath);
+
+            try
+            {
+                File.Delete(fullPath);
+                removed++;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                Log(logPath, $"Could not remove delta-listed file {relative}: {exception.Message}");
+            }
+        }
+
+        if (removed > 0)
+        {
+            Log(logPath, $"Removed {removed} delta-listed install files.");
+        }
+    }
+
     private static void CopyWithRetry(string source, string destination)
     {
         Exception? lastError = null;
@@ -426,5 +590,6 @@ internal static class Program
         string SourceDirectory,
         string TargetDirectory,
         string LaunchFile,
-        string Version);
+        string Version,
+        bool DeltaMode);
 }

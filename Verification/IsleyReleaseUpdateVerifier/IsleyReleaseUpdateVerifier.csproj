@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\BurntHud\IsleyReleaseLogic.cs" Link="IsleyReleaseLogic.cs" />
+    <Compile Include="..\..\BurntHud\IsleyUpdateClient.cs" Link="IsleyUpdateClient.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>
