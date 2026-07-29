@@ -122,6 +122,7 @@
   let cursorInspector = null;
   let quickActionMenu = null;
   let quickActionPoint = null;
+  let quickActionWatchTarget = null;
   let waypointEdgeCue = null;
   let waypointEdgeCueVisible = false;
   let waypointEdgeCueSide = '';
@@ -8852,6 +8853,7 @@
 
   const closeMapQuickActions = () => {
     quickActionPoint = null;
+    quickActionWatchTarget = null;
     if (quickActionMenu) quickActionMenu.style.display = 'none';
   };
 
@@ -8954,6 +8956,7 @@
       <div class="isle-mapper-quick-title" data-isle-mapper-quick-title>GRID --</div>
       <div class="isle-mapper-quick-detail" data-isle-mapper-quick-detail>MAP --</div>
       <div class="isle-mapper-quick-actions">
+        <button type="button" role="menuitem" data-isle-mapper-action="watch" style="display:none">Watch player</button>
         <button type="button" role="menuitem" data-isle-mapper-action="route">Route here</button>
         <button type="button" role="menuitem" data-isle-mapper-action="pin">Save pin here</button>
         <button type="button" role="menuitem" data-isle-mapper-action="copy">Copy location</button>
@@ -8965,7 +8968,21 @@
       if (!button || !quickActionPoint || streamerMode) return;
       const point = { ...quickActionPoint };
       const action = button.dataset.isleMapperAction;
-      if (action === 'route') {
+      if (action === 'watch') {
+        const target = quickActionWatchTarget;
+        if (target && target.name) {
+          window.chrome?.webview?.postMessage({
+            type: 'isley-watch-player',
+            kind: 'map-player',
+            name: target.name,
+            distanceMu: target.distanceMu,
+            cardinal: target.cardinal
+          });
+          lastMessage = '';
+          notify('quick-player-watched');
+          finishQuickAction(button, 'PLAYER WATCHED');
+        }
+      } else if (action === 'route') {
         if (setStaticWaypoint(point, `Grid ${point.gridReference} · quick waypoint`)) {
           lastMessage = '';
           notify('quick-route-set');
@@ -9053,6 +9070,48 @@
     });
   };
 
+  // Hit-test the authorized live player markers for the right-click context
+  // action. Self is excluded; the nearest marker inside a bounded radius wins.
+  const findWatchCandidate = (clientX, clientY) => {
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+    const players = getPlayerMarkers();
+    let best = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const player of players) {
+      if (player.isSelf) continue;
+      const rect = player.playerGroup?.getBoundingClientRect?.();
+      if (!rect || !(rect.width > 0)) continue;
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const distance = Math.hypot(clientX - centerX, clientY - centerY);
+      const hitRadius = Math.max(18, Math.min(40, Math.max(rect.width, rect.height)));
+      if (distance <= hitRadius && distance < bestDistance) {
+        bestDistance = distance;
+        best = player;
+      }
+    }
+    if (!best) return null;
+    const name = String(best.name || '').replace(/\s+/g, ' ').trim().slice(0, 64);
+    if (!name) return null;
+    let distanceMu = null;
+    let cardinal = '';
+    const pose = readMarkerPose(best.marker);
+    const selfPlayer = players.find(player => player.isSelf);
+    const selfPose = selfPlayer ? readSelfPose(selfPlayer) : readModelSelfPose();
+    if (pose && selfPose) {
+      const dx = pose.x - selfPose.x;
+      const dy = pose.y - selfPose.y;
+      const rawDistance = Math.hypot(dx, dy);
+      if (Number.isFinite(rawDistance) && rawDistance >= 0 && rawDistance <= 1000000) {
+        distanceMu = Math.round(rawDistance / 5) * 5;
+        const bearing = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+        const cardinals = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        cardinal = cardinals[Math.round(bearing / 45) % 8];
+      }
+    }
+    return { name, distanceMu, cardinal };
+  };
+
   const showMapQuickActions = point => {
     if (!point || streamerMode) return false;
     ensureTacticalUi();
@@ -9063,11 +9122,23 @@
     const routeButton = quickActionMenu.querySelector('[data-isle-mapper-action="route"]');
     const pinButton = quickActionMenu.querySelector('[data-isle-mapper-action="pin"]');
     const copyButton = quickActionMenu.querySelector('[data-isle-mapper-action="copy"]');
+    const watchButton = quickActionMenu.querySelector('[data-isle-mapper-action="watch"]');
     const style = pinTypes[pinType] || pinTypes.safe;
     title.textContent = `GRID ${point.gridReference}`;
     detail.textContent = point.world
       ? `MAP ${point.x.toFixed(1)}, ${point.y.toFixed(1)} · WORLD ${point.world.x.toFixed(0)}, ${point.world.y.toFixed(0)}`
       : `MAP ${point.x.toFixed(1)}, ${point.y.toFixed(1)}`;
+    quickActionWatchTarget = findWatchCandidate(point.clientX, point.clientY);
+    if (quickActionWatchTarget) {
+      const shortName = quickActionWatchTarget.name.length <= 18
+        ? quickActionWatchTarget.name
+        : `${quickActionWatchTarget.name.slice(0, 17)}…`;
+      watchButton.textContent = `Watch ${shortName}`;
+      watchButton.style.display = '';
+    } else {
+      watchButton.textContent = 'Watch player';
+      watchButton.style.display = 'none';
+    }
     routeButton.textContent = 'Route here';
     pinButton.textContent = `Save ${style.label.toLowerCase()} pin here`;
     copyButton.textContent = 'Copy location';

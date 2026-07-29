@@ -697,11 +697,15 @@
     const roundTrips = [];
     const jitters = [];
     const losses = [];
+    const peerQualities = [];
     try {
       for (const [id, peer] of peers) {
         const connection = peer.connection;
         if (!connection || connection.connectionState !== 'connected') continue;
         peerCount += 1;
+        const peerRoundTrips = [];
+        const peerJitters = [];
+        const peerLosses = [];
         try {
           const stats = await connection.getStats();
           let selectedPair = null;
@@ -718,6 +722,7 @@
               const roundTrip = boundedQualityMetric(Number(report.roundTripTime) * 1000, 5000);
               if (roundTrip !== null) {
                 roundTrips.push(roundTrip);
+                peerRoundTrips.push(roundTrip);
                 peerHasSample = true;
               }
             }
@@ -727,6 +732,7 @@
             const jitter = boundedQualityMetric(Number(report.jitter) * 1000, 1000);
             if (jitter !== null) {
               jitters.push(jitter);
+              peerJitters.push(jitter);
               peerHasSample = true;
             }
             const packetsLost = boundedQualityMetric(report.packetsLost, Number.MAX_SAFE_INTEGER);
@@ -741,7 +747,9 @@
               : packetsReceived;
             const intervalPackets = intervalLost + intervalReceived;
             if ((previous && intervalPackets >= 20) || (!previous && intervalPackets >= 100)) {
-              losses.push(Math.min(100, intervalLost / intervalPackets * 100));
+              const intervalLossPercent = Math.min(100, intervalLost / intervalPackets * 100);
+              losses.push(intervalLossPercent);
+              peerLosses.push(intervalLossPercent);
               peerHasSample = true;
             }
           }
@@ -750,9 +758,20 @@
             5000);
           if (candidateRoundTrip !== null) {
             roundTrips.push(candidateRoundTrip);
+            peerRoundTrips.push(candidateRoundTrip);
             peerHasSample = true;
           }
-          if (peerHasSample) sampleCount += 1;
+          if (peerHasSample) {
+            sampleCount += 1;
+            if (peerQualities.length < 31) {
+              peerQualities.push({
+                id,
+                roundTripMilliseconds: peerRoundTrips.length ? Math.max(...peerRoundTrips) : null,
+                jitterMilliseconds: peerJitters.length ? Math.max(...peerJitters) : null,
+                packetLossPercent: peerLosses.length ? Math.max(...peerLosses) : null
+              });
+            }
+          }
         } catch {}
       }
       if (revision !== connectionRevision || !qualityMonitorEnabled) return;
@@ -761,7 +780,8 @@
         sampleCount,
         roundTripMilliseconds: roundTrips.length ? Math.max(...roundTrips) : null,
         jitterMilliseconds: jitters.length ? Math.max(...jitters) : null,
-        packetLossPercent: losses.length ? Math.max(...losses) : null
+        packetLossPercent: losses.length ? Math.max(...losses) : null,
+        peers: peerQualities
       });
     } finally {
       qualitySampleInFlight = false;
@@ -778,6 +798,7 @@
       roundTripMilliseconds: null,
       jitterMilliseconds: null,
       packetLossPercent: null,
+      peers: [],
       state
     });
   };

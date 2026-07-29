@@ -5904,4 +5904,75 @@ public partial class MainWindow
         }
         LiveMapWebView.CoreWebView2.Navigate(LocalMapUri);
     }
+
+    // ===== Wave-2: encounter watchlist bridge (map shell context action) =====
+    // A dedicated, additive WebMessageReceived subscription so the shared map
+    // bridge handler in MainWindow.WebView.cs stays untouched. Only the
+    // bounded, whitelisted "isley-watch-player" message is acted on; every
+    // other message type is ignored here and handled by the primary bridge.
+
+    private bool _mapWatchlistBridgeInstalled;
+
+    private void EnsureMapWatchlistBridgeInstalled()
+    {
+        if (_mapWatchlistBridgeInstalled || LiveMapWebView?.CoreWebView2 is null)
+        {
+            return;
+        }
+
+        _mapWatchlistBridgeInstalled = true;
+        LiveMapWebView.CoreWebView2.WebMessageReceived += MapWatchlistBridge_WebMessageReceived;
+    }
+
+    private void MapWatchlistBridge_WebMessageReceived(
+        object? sender,
+        CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        string? name = null;
+        double? distanceMu = null;
+        var cardinal = string.Empty;
+        try
+        {
+            using var document = JsonDocument.Parse(e.WebMessageAsJson);
+            var root = document.RootElement;
+            if (!root.TryGetProperty("type", out var typeValue)
+                || typeValue.ValueKind != JsonValueKind.String
+                || !string.Equals(typeValue.GetString(), "isley-watch-player", StringComparison.Ordinal)
+                || !root.TryGetProperty("kind", out var kindValue)
+                || kindValue.ValueKind != JsonValueKind.String
+                || !string.Equals(kindValue.GetString(), "map-player", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            name = root.TryGetProperty("name", out var nameValue)
+                   && nameValue.ValueKind == JsonValueKind.String
+                ? nameValue.GetString()
+                : null;
+            if (name is { Length: > 64 })
+            {
+                return;
+            }
+
+            if (root.TryGetProperty("distanceMu", out var distanceValue)
+                && distanceValue.ValueKind == JsonValueKind.Number
+                && distanceValue.TryGetDouble(out var rawDistance)
+                && double.IsFinite(rawDistance)
+                && rawDistance is >= 0 and <= 1_000_000)
+            {
+                distanceMu = rawDistance;
+            }
+
+            cardinal = root.TryGetProperty("cardinal", out var cardinalValue)
+                       && cardinalValue.ValueKind == JsonValueKind.String
+                ? (cardinalValue.GetString() ?? string.Empty).Trim().ToUpperInvariant()
+                : string.Empty;
+        }
+        catch (JsonException)
+        {
+            return;
+        }
+
+        _ = AddEncounterWatchFromMapAsync(name, distanceMu, cardinal);
+    }
 }

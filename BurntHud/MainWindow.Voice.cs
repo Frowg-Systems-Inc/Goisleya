@@ -30,6 +30,12 @@ public partial class MainWindow
     private DateTimeOffset _voiceAutoReconnectNotBefore = DateTimeOffset.MinValue;
     private int _voiceAutoReconnectDelaySeconds = 5;
 
+    // Wave-2: per-peer volume memory (persisted via the overlay extras sidecar)
+    // and per-peer quality snapshots (session-only, real WebRTC stats only).
+    private readonly HashSet<string> _voicePeerVolumeRestoreAppliedPeerIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, VoicePeerQualitySnapshot> _voicePeerQualities =
+        new(StringComparer.Ordinal);
+
     private void RefreshVoiceStatus()
     {
         if (VoiceHudBorder is null)
@@ -529,16 +535,73 @@ public partial class MainWindow
 
         _voiceParticipants.Clear();
         _voiceParticipants.AddRange(participants);
+        RestoreRememberedVoicePeerVolumes();
         _voiceParticipantRosterSignature = string.Empty;
         UpdateVoiceParticipantRoster();
+    }
+
+    // Per-peer volume memory: peer ids are session-random, so the remembered
+    // level is keyed by a one-way hash of the peer's self-reported name. Each
+    // peer is restored at most once per session so a manual mid-session change
+    // is never overridden.
+    private void RestoreRememberedVoicePeerVolumes()
+    {
+        if (!_voiceBridgeRunning || _voiceParticipants.Count == 0)
+        {
+            return;
+        }
+
+        EnsureOverlayExtrasLoaded();
+        var now = DateTimeOffset.UtcNow;
+        var changed = false;
+        for (var index = 0; index < _voiceParticipants.Count; index++)
+        {
+            var participant = _voiceParticipants[index];
+            if (!_voicePeerVolumeRestoreAppliedPeerIds.Add(participant.Id)
+                || !VoicePeerVolumeLogic.TryComputePeerKey(participant.Name, out var peerKey)
+                || !VoicePeerVolumeLogic.TryFindVolume(_overlayVoicePeerVolumes, peerKey, out var remembered))
+            {
+                continue;
+            }
+
+            if (remembered == participant.VolumePercent)
+            {
+                continue;
+            }
+
+            participant = participant with { VolumePercent = remembered };
+            _voiceParticipants[index] = participant;
+            changed = true;
+            PostVoiceCommand(new
+            {
+                type = "participant-settings",
+                peerId = participant.Id,
+                muted = participant.Muted,
+                volume = participant.VolumePercent / 100d
+            });
+            _overlayVoicePeerVolumes = VoicePeerVolumeLogic.Upsert(
+                _overlayVoicePeerVolumes,
+                peerKey,
+                participant.VolumePercent,
+                now);
+        }
+
+        if (changed)
+        {
+            SaveOverlayExtras();
+        }
     }
 
     private void UpdateVoiceParticipantRoster()
     {
         if (VoiceParticipantListPanel is null || VoiceParticipantEmptyText is null) return;
         var signature = string.Join('|', _streamerMode,
+            _voiceQualityMonitorEnabled && _voiceBridgeRunning,
             string.Join(';', _voiceParticipants.Select(participant =>
-                $"{participant.Id}:{participant.Name}:{participant.Muted}:{participant.VolumePercent}:{participant.State}:{participant.Talking}:{participant.Distance}")));
+                $"{participant.Id}:{participant.Name}:{participant.Muted}:{participant.VolumePercent}:{participant.State}:{participant.Talking}:{participant.Distance}:" +
+                $"{(_voicePeerQualities.TryGetValue(participant.Id, out var signatureQuality)
+                    ? $"{signatureQuality.RoundTripMilliseconds}:{signatureQuality.JitterMilliseconds}:{signatureQuality.PacketLossPercent}"
+                    : "-")}")));
         if (string.Equals(signature, _voiceParticipantRosterSignature, StringComparison.Ordinal)) return;
         _voiceParticipantRosterSignature = signature;
 
@@ -559,6 +622,11 @@ public partial class MainWindow
             {
                 stateText += $" · {participant.Distance.Value} MU";
             }
+            var peerQuality = _voicePeerQualities.TryGetValue(participant.Id, out var participantQuality)
+                ? participantQuality
+                : (VoicePeerQualitySnapshot?)null;
+            var qualityMonitorActive = _voiceQualityMonitorEnabled && _voiceBridgeRunning;
+            stateText += VoicePeerQualityLogic.FormatSuffix(peerQuality, qualityMonitorActive);
             var row = new Grid { Margin = new Thickness(0, 0, 0, 3) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(48) });
@@ -585,7 +653,8 @@ public partial class MainWindow
                     ? (Brush)FindResource("AccentBrush")
                     : participant.State == "CONNECTED"
                     ? (Brush)FindResource("SuccessBrush")
-                    : (Brush)FindResource("SecondaryTextBrush")
+                    : (Brush)FindResource("SecondaryTextBrush"),
+                ToolTip = VoicePeerQualityLogic.Describe(peerQuality, qualityMonitorActive)
             });
             Grid.SetColumn(identity, 0);
             row.Children.Add(identity);
@@ -839,6 +908,28 @@ public partial class MainWindow
                     "packetLossPercent",
                     100);
                 _voiceQualityAt = DateTimeOffset.UtcNow;
+                _voicePeerQualities.Clear();
+                if (root.TryGetProperty("peers", out var peersValue)
+                    && peersValue.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in peersValue.EnumerateArray()
+                                 .Take(VoicePeerQualityLogic.MaximumTrackedPeers))
+                    {
+                        var qualityPeerId = item.TryGetProperty("id", out var qualityIdValue)
+                            ? VoiceIntegrationLogic.NormalizePeerId(qualityIdValue.GetString())
+                            : string.Empty;
+                        if (string.IsNullOrEmpty(qualityPeerId))
+                        {
+                            continue;
+                        }
+
+                        _voicePeerQualities[qualityPeerId] = new VoicePeerQualitySnapshot(
+                            ReadVoiceQualityMetric(item, "roundTripMilliseconds", 5_000),
+                            ReadVoiceQualityMetric(item, "jitterMilliseconds", 1_000),
+                            ReadVoiceQualityMetric(item, "packetLossPercent", 100));
+                    }
+                }
+                _voiceParticipantRosterSignature = string.Empty;
             }
             else if (type == "voice-devices")
             {
@@ -1481,6 +1572,7 @@ public partial class MainWindow
                 _voiceOutputSelectionSupported,
                 "CONNECT TO CHOOSE");
             _voiceParticipants.Clear();
+            _voicePeerVolumeRestoreAppliedPeerIds.Clear();
             _voiceParticipantRosterSignature = string.Empty;
             ClearVoiceRouteOffer("VOICE DISABLED · ROUTE OFFERS CLEARED");
             UpdateVoiceParticipantRoster();
@@ -1578,6 +1670,7 @@ public partial class MainWindow
                 _voiceOutputSelectionSupported,
                 "CONNECT TO CHOOSE");
             _voiceParticipants.Clear();
+            _voicePeerVolumeRestoreAppliedPeerIds.Clear();
             _voiceParticipantRosterSignature = string.Empty;
             ClearVoiceRouteOffer("VOICE DISCONNECTED · ROUTE OFFERS CLEARED");
             UpdateVoiceParticipantRoster();
@@ -1898,6 +1991,7 @@ public partial class MainWindow
         ResetVoiceQualityState();
         _voiceParticipantCount = 0;
         _voiceParticipants.Clear();
+        _voicePeerVolumeRestoreAppliedPeerIds.Clear();
         _voiceParticipantRosterSignature = string.Empty;
         ClearVoiceRouteOffer("VOICE ROOM CHANGED · ROUTE OFFERS CLEARED");
         SetVoiceInputDeviceOptions([], _voiceSelectedInputDeviceId, "CONNECT TO CHOOSE");
@@ -1951,6 +2045,7 @@ public partial class MainWindow
         _voiceQualityJitterMilliseconds = null;
         _voiceQualityPacketLossPercent = null;
         _voiceQualityAt = default;
+        _voicePeerQualities.Clear();
     }
 
     private async void VoiceSpatialModeButton_Click(object sender, RoutedEventArgs e)
@@ -2123,6 +2218,16 @@ public partial class MainWindow
             muted = participant.Muted,
             volume = participant.VolumePercent / 100d
         });
+        if (VoicePeerVolumeLogic.TryComputePeerKey(participant.Name, out var changedPeerKey))
+        {
+            EnsureOverlayExtrasLoaded();
+            _overlayVoicePeerVolumes = VoicePeerVolumeLogic.Upsert(
+                _overlayVoicePeerVolumes,
+                changedPeerKey,
+                participant.VolumePercent,
+                DateTimeOffset.UtcNow);
+            SaveOverlayExtras();
+        }
         _voiceParticipantRosterSignature = string.Empty;
         UpdateVoiceParticipantRoster();
     }
