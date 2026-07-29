@@ -1,11 +1,11 @@
 {
-    "manifestVersion": 1,
-    "channel": "stable",
-    "version": "1.3.6",
-    "publishedAt": "2026-07-26T18:59:32.689500+00:00",
-    "downloadUrl": "https://isley-download.gmith.chatgpt.site/Isley-Windows-x64.zip",
-    "sha256": "2E335F99A7FF4BC0D0D20EDE34F8CC271F724502AB885D5A8365EB3DC7D23EC9",
-    "bytes": 8963333,
-    "notes": "LOCATION DATA freshness fix, Defender false-positive mitigations, Tools\u2192MORE updates, overlay topmost, paste-coords routing, solid zones, and resize fix.",
-    "required": false
+  "manifestVersion": 1,
+  "channel": "stable",
+  "version": "1.4.0",
+  "publishedAt": "2026-07-29T09:54:15.0554782+00:00",
+  "downloadUrl": "https://isley-download.gmith.chatgpt.site/Isley-Windows-x64.zip",
+  "sha256": "393C1C79C6B2F3C6E4AC4CCFC94245139008D4BCE1AEBB5836726B9140684566",
+  "bytes": 9459702,
+  "notes": "Isley 1.4.0: 13 QoL features, relay delta streaming (v2), updater boot-ok + beta channel + delta downloads, 100% verifier coverage, runtime-validated.",
+  "required": false
 }
