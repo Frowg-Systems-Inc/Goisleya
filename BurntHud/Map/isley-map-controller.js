@@ -172,6 +172,9 @@
   let routePlanRoot = null;
   let routeAdvanceDistance = 10;
   let routeAdvanceTimer = 0;
+  let routeAutoReplanEnabled = true;
+  let routeAutoReplanAt = 0;
+  let routeAutoReplanTimer = 0;
   let terrainRoadNetwork = null;
   let terrainNetworkReady = false;
   let terrainRoadDisplayRoot = null;
@@ -3910,6 +3913,47 @@
     return Number.isFinite(nearest) ? nearest : null;
   };
 
+  // Manual/shared route auto-replan: mirrors the terrain off-course posture
+  // (bounded cadence, debounced timer) for straight-line route plans.
+  const distanceToRemainingRoutePlan = point => {
+    if (!point || routeStops.length < 2) return null;
+    if (routePlanSource !== 'manual' && routePlanSource !== 'shared') return null;
+    let nearest = Infinity;
+    const startIndex = Math.max(1, routeCurrentIndex);
+    for (let index = startIndex; index < routeStops.length; index += 1) {
+      nearest = Math.min(nearest, distancePointToSegment(
+        point, routeStops[index - 1], routeStops[index]));
+    }
+    return Number.isFinite(nearest) ? nearest : null;
+  };
+
+  const replanActiveRouteFromPosition = (point, reason = 'route-auto-replanned') => {
+    if (!routeAutoReplanEnabled || !routePlanActive) return false;
+    if (routePlanSource !== 'manual' && routePlanSource !== 'shared') return false;
+    const x = Number(point?.x);
+    const y = Number(point?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const remaining = routeStops
+      .slice(Math.max(0, routeCurrentIndex))
+      .map(stop => ({ ...stop }));
+    if (!remaining.length) return false;
+    routeAutoReplanAt = Date.now();
+    routeStops = [{
+      x: Math.min(1000, Math.max(0, x)),
+      y: Math.min(1000, Math.max(0, y)),
+      label: 'Replanned start',
+      kind: ''
+    }, ...remaining];
+    routeCurrentIndex = 1;
+    routePlanComplete = false;
+    setWaypointFromRouteStop();
+    drawRoutePlan();
+    updateWaypoint(getPlayerMarkers());
+    lastMessage = '';
+    notify(reason);
+    return true;
+  };
+
   const applyMapOrientation = () => {
     if (!map) return;
     const rotation = headingUp ? -selfHeading : 0;
@@ -5316,6 +5360,268 @@
     return true;
   };
 
+  // One-step undo for destructive map-tool clears. Each collection keeps a
+  // single snapshot taken just before its clear; undoLastClear restores the
+  // most recently cleared collection unless a specific one is requested.
+  const mapClearUndoState = { pins: null, route: null, noGo: null, measurement: null };
+  let mapClearUndoLastKind = '';
+
+  const snapshotMapClear = (kind, snapshot) => {
+    if (!Object.hasOwn(mapClearUndoState, kind)) return;
+    mapClearUndoState[kind] = snapshot;
+    mapClearUndoLastKind = kind;
+  };
+
+  const undoLastClear = (requestedKind = '') => {
+    const kind = String(requestedKind || mapClearUndoLastKind || '');
+    if (!Object.hasOwn(mapClearUndoState, kind)) return '';
+    const snapshot = mapClearUndoState[kind];
+    if (!snapshot) return '';
+    if (kind === 'pins') {
+      const restoredPins = (Array.isArray(snapshot.pins) ? snapshot.pins : [])
+        .filter(pin => pin && Object.hasOwn(pinTypes, pin.type))
+        .slice(-20)
+        .map(pin => ({ ...pin }));
+      if (!restoredPins.length) return '';
+      const existingPinIds = new Set(savedPins.map(pin => pin.id));
+      for (const pin of restoredPins) {
+        if (existingPinIds.has(pin.id)) continue;
+        if (savedPins.length >= 20) savedPins.shift();
+        savedPins.push(pin);
+      }
+      if (snapshot.activePinId && !activePinId) {
+        const activePin = savedPins.find(pin => pin.id === snapshot.activePinId);
+        if (activePin) {
+          activePinId = activePin.id;
+          waypoint = {
+            x: activePin.x,
+            y: activePin.y,
+            label: String(
+              activePin.label || `${pinTypes[activePin.type]?.label || 'Saved'} marker`)
+              .slice(0, 64),
+            kind: normalizeWaypointKind(activePin.type)
+          };
+          updateWaypoint(getPlayerMarkers());
+        }
+      }
+      persistSavedPins();
+      drawSavedPins();
+    } else if (kind === 'route') {
+      if (routePlanArmed || routePlanActive || routeStops.length) return '';
+      const stops = (Array.isArray(snapshot.stops) ? snapshot.stops : [])
+        .filter(stop => Number.isFinite(Number(stop?.x)) && Number.isFinite(Number(stop?.y)))
+        .slice(0, 12)
+        .map(stop => ({ ...stop }));
+      if (!stops.length) return '';
+      routePlanArmed = Boolean(snapshot.armed);
+      routePlanActive = Boolean(snapshot.active);
+      routePlanComplete = Boolean(snapshot.complete);
+      routePlanSource = String(snapshot.source || 'manual');
+      routeStops = stops;
+      routeCurrentIndex = Math.min(
+        stops.length - 1,
+        Math.max(0, Number(snapshot.currentIndex) || 0));
+      routeAutoReplanAt = Date.now();
+      if (routePlanActive) {
+        setWaypointFromRouteStop();
+        updateWaypoint(getPlayerMarkers());
+      }
+      drawRoutePlan();
+    } else if (kind === 'noGo') {
+      const area = normalizeNoGoArea(snapshot.area, noGoAreas.length);
+      if (!area) return '';
+      if (noGoAreas.length >= noGoAreaMaximumCount) return '';
+      if (noGoAreas.some(existing => existing.id === area.id)) return '';
+      const index = Math.min(
+        noGoAreas.length,
+        Math.max(0, Number(snapshot.index) || 0));
+      noGoAreas.splice(index, 0, area);
+      noGoSelectedAreaId = area.id;
+      noGoLastStatus = 'area-restored';
+      persistNoGoAreas();
+      drawNoGoAreas();
+      scheduleTerrainCourseForObstacleChange();
+    } else if (kind === 'measurement') {
+      if (measurementArmed || measurementStart || measurement) return '';
+      measurementArmed = Boolean(snapshot.armed);
+      measurementStart = snapshot.start ? { ...snapshot.start } : null;
+      measurement = snapshot.measurement
+        ? {
+            start: { ...snapshot.measurement.start },
+            end: { ...snapshot.measurement.end }
+          }
+        : null;
+      drawMeasurement();
+    } else {
+      return '';
+    }
+    mapClearUndoState[kind] = null;
+    if (mapClearUndoLastKind === kind) mapClearUndoLastKind = '';
+    lastMessage = '';
+    notify(`${kind}-clear-undone`);
+    return kind;
+  };
+
+  // Route share codes: the same bounded base64 posture as pin share codes.
+  const routeShareCodePrefix = 'ISLEYROUTE1.';
+  const exportRouteShareCode = () => {
+    const payload = routeStops
+      .filter(stop => Number.isFinite(Number(stop?.x)) && Number.isFinite(Number(stop?.y)))
+      .slice(0, 12)
+      .map(stop => ({
+        x: Math.round(Math.min(1000, Math.max(0, Number(stop.x))) * 10) / 10,
+        y: Math.round(Math.min(1000, Math.max(0, Number(stop.y))) * 10) / 10,
+        l: String(stop.label || '').slice(0, 64)
+      }));
+    if (payload.length < 2) return '';
+    try {
+      return routeShareCodePrefix + btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    } catch {
+      return '';
+    }
+  };
+
+  const importRouteShareCode = code => {
+    const text = String(code || '').trim();
+    if (!text.startsWith(routeShareCodePrefix) || text.length > 8192) return -1;
+    let entries;
+    try {
+      entries = JSON.parse(decodeURIComponent(escape(atob(text.slice(routeShareCodePrefix.length)))));
+    } catch {
+      return -1;
+    }
+    if (!Array.isArray(entries) || streamerMode) return -1;
+    const stops = [];
+    for (const entry of entries.slice(0, 12)) {
+      if (!entry || typeof entry !== 'object') continue;
+      const x = Number(entry.x);
+      const y = Number(entry.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const clampedX = Math.min(1000, Math.max(0, x));
+      const clampedY = Math.min(1000, Math.max(0, y));
+      const previous = stops.at(-1);
+      if (previous
+          && Math.abs(previous.x - clampedX) < 0.5
+          && Math.abs(previous.y - clampedY) < 0.5) continue;
+      stops.push({
+        x: clampedX,
+        y: clampedY,
+        label: String(entry.l || `Route stop ${stops.length + 1}`).slice(0, 64),
+        kind: ''
+      });
+    }
+    if (stops.length < 2) return 0;
+    const identical = stops.length === routeStops.length
+      && stops.every((stop, index) => Math.abs(routeStops[index].x - stop.x) < 0.5
+        && Math.abs(routeStops[index].y - stop.y) < 0.5);
+    if (identical) return 0;
+    resetRoutePlan(true);
+    waypoint = null;
+    waypointArmed = false;
+    waypointDistance = null;
+    waypointBearing = null;
+    waypointCardinal = '';
+    friendRouteName = '';
+    packRouteActive = false;
+    packOutlierRouteActive = false;
+    activePinId = '';
+    pinArmed = false;
+    cancelMeasurementCapture();
+    routePlanSource = 'shared';
+    routeStops = stops;
+    routeCurrentIndex = 0;
+    routePlanActive = true;
+    routePlanComplete = false;
+    routeAutoReplanAt = Date.now();
+    setWaypointFromRouteStop();
+    drawRoutePlan();
+    updateWaypoint(getPlayerMarkers());
+    lastMessage = '';
+    notify('route-share-imported');
+    return stops.length;
+  };
+
+  // No-go share codes: whole avoidance areas under the same codec posture.
+  const noGoShareCodePrefix = 'ISLEYNOGO1.';
+  const exportNoGoShareCode = () => {
+    const payload = noGoAreas
+      .slice(0, noGoAreaMaximumCount)
+      .map(area => ({
+        l: String(area.label || '').slice(0, 64),
+        p: (Array.isArray(area.points) ? area.points : [])
+          .slice(0, noGoAreaMaximumVertices)
+          .map(point => [
+            Math.round(Math.min(1000, Math.max(0, Number(point.x))) * 10) / 10,
+            Math.round(Math.min(1000, Math.max(0, Number(point.y))) * 10) / 10
+          ])
+      }))
+      .filter(area => area.p.length >= 3);
+    if (!payload.length) return '';
+    try {
+      return noGoShareCodePrefix + btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    } catch {
+      return '';
+    }
+  };
+
+  const importNoGoShareCode = code => {
+    const text = String(code || '').trim();
+    if (!text.startsWith(noGoShareCodePrefix) || text.length > 8192) return -1;
+    let entries;
+    try {
+      entries = JSON.parse(decodeURIComponent(escape(atob(text.slice(noGoShareCodePrefix.length)))));
+    } catch {
+      return -1;
+    }
+    if (!Array.isArray(entries) || streamerMode) return -1;
+    let added = 0;
+    for (const entry of entries.slice(0, noGoAreaMaximumCount)) {
+      if (noGoAreas.length >= noGoAreaMaximumCount) break;
+      if (!entry || typeof entry !== 'object') continue;
+      const sourcePoints = Array.isArray(entry.p) ? entry.p : [];
+      if (sourcePoints.length < 3 || sourcePoints.length > noGoAreaMaximumVertices) continue;
+      const points = [];
+      let pointsValid = true;
+      for (const sourcePoint of sourcePoints) {
+        const x = Number(Array.isArray(sourcePoint) ? sourcePoint[0] : sourcePoint?.x);
+        const y = Number(Array.isArray(sourcePoint) ? sourcePoint[1] : sourcePoint?.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          pointsValid = false;
+          break;
+        }
+        points.push({
+          x: Math.min(1000, Math.max(0, x)),
+          y: Math.min(1000, Math.max(0, y))
+        });
+      }
+      if (!pointsValid) continue;
+      const area = normalizeNoGoArea({
+        label: String(entry.l || '').slice(0, 64),
+        points,
+        createdAt: Date.now()
+      }, noGoAreas.length);
+      if (!area) continue;
+      const duplicate = noGoAreas.some(existing => existing.id === area.id
+        || (existing.points.length === area.points.length
+          && existing.points.every((point, index) =>
+            Math.abs(point.x - area.points[index].x) < 0.5
+            && Math.abs(point.y - area.points[index].y) < 0.5)));
+      if (duplicate) continue;
+      noGoAreas.push(area);
+      noGoSelectedAreaId = area.id;
+      added += 1;
+    }
+    if (added > 0) {
+      noGoLastStatus = 'areas-imported';
+      persistNoGoAreas();
+      drawNoGoAreas();
+      scheduleTerrainCourseForObstacleChange();
+      lastMessage = '';
+      notify('no-go-share-imported');
+    }
+    return added;
+  };
+
   const sanitizePinLabel = value => String(value || '')
     .replace(/[\u0000-\u001f\u007f]+/g, ' ')
     .replace(/\s+/g, ' ')
@@ -6217,6 +6523,14 @@
     const id = String(requestedId || noGoSelectedAreaId || '');
     const index = noGoAreas.findIndex(area => area.id === id);
     if (index < 0 || streamerMode) return false;
+    const removed = noGoAreas[index];
+    snapshotMapClear('noGo', {
+      area: {
+        ...removed,
+        points: removed.points.map(point => ({ ...point }))
+      },
+      index
+    });
     noGoAreas.splice(index, 1);
     noGoSelectedAreaId = noGoAreas[Math.min(index, noGoAreas.length - 1)]?.id || '';
     noGoLastStatus = 'area-removed';
@@ -6521,6 +6835,10 @@
   const resetRoutePlan = (clearOwnedWaypoint = true) => {
     const ownedWaypoint = routePlanActive || routePlanComplete;
     clearRouteAdvanceTimer();
+    if (routeAutoReplanTimer) {
+      clearTimeout(routeAutoReplanTimer);
+      routeAutoReplanTimer = 0;
+    }
     routePlanArmed = false;
     routePlanActive = false;
     routePlanComplete = false;
@@ -7747,6 +8065,7 @@
     routeCurrentIndex = 0;
     routePlanActive = true;
     routePlanComplete = false;
+    routeAutoReplanAt = Date.now();
     setWaypointFromRouteStop();
     drawRoutePlan();
     updateWaypoint(getPlayerMarkers());
@@ -8179,6 +8498,20 @@
           terrainCourseReplanTimer = 0;
           startTerrainCourseInternal(
             terrainCourseDestination, 'terrain-course-auto-rerouted');
+        }, 450);
+      }
+    }
+    if (routeAutoReplanEnabled
+        && routePlanActive
+        && (routePlanSource === 'manual' || routePlanSource === 'shared')) {
+      const offRouteDistance = distanceToRemainingRoutePlan(selfPose);
+      const now = Date.now();
+      if (offRouteDistance != null && offRouteDistance > 30
+          && now - routeAutoReplanAt >= 8000
+          && !routeAutoReplanTimer) {
+        routeAutoReplanTimer = window.setTimeout(() => {
+          routeAutoReplanTimer = 0;
+          replanActiveRouteFromPosition(selfPose);
         }, 450);
       }
     }
@@ -9342,6 +9675,13 @@
     version: 78,
     exportPinShareCode,
     importPinShareCode,
+    exportRouteShareCode,
+    importRouteShareCode,
+    exportNoGoShareCode,
+    importNoGoShareCode,
+    undoLastClear(kind) {
+      return undoLastClear(String(kind || ''));
+    },
     recenter() {
       following = true;
       smartZoomSuspended = false;
@@ -9439,6 +9779,13 @@
       drawLearnedPassages();
       if ('routeAdvanceDistance' in options) {
         routeAdvanceDistance = Math.min(50, Math.max(3, Number(options.routeAdvanceDistance) || 10));
+      }
+      if ('routeAutoReplan' in options) {
+        routeAutoReplanEnabled = Boolean(options.routeAutoReplan);
+        if (!routeAutoReplanEnabled && routeAutoReplanTimer) {
+          clearTimeout(routeAutoReplanTimer);
+          routeAutoReplanTimer = 0;
+        }
       }
       if ('rememberLastPosition' in options) {
         rememberLastPositionEnabled = Boolean(options.rememberLastPosition);
@@ -9594,6 +9941,7 @@
       routePlanComplete = false;
       routePlanSource = routePlanSource || 'manual';
       routeCurrentIndex = 0;
+      routeAutoReplanAt = Date.now();
       setWaypointFromRouteStop();
       drawRoutePlan();
       updateWaypoint(getPlayerMarkers());
@@ -9643,6 +9991,16 @@
     clearRoutePlan() {
       const hadRoute = routePlanArmed || routePlanActive
         || routePlanComplete || routeStops.length > 0;
+      if (hadRoute) {
+        snapshotMapClear('route', {
+          armed: routePlanArmed,
+          active: routePlanActive,
+          complete: routePlanComplete,
+          source: routePlanSource,
+          stops: routeStops.map(stop => ({ ...stop })),
+          currentIndex: routeCurrentIndex
+        });
+      }
       resetRoutePlan(true);
       updateWaypoint(getPlayerMarkers());
       lastMessage = '';
@@ -9664,6 +10022,18 @@
     },
     clearMeasurement() {
       const hadMeasurement = measurementArmed || Boolean(measurementStart) || Boolean(measurement);
+      if (hadMeasurement) {
+        snapshotMapClear('measurement', {
+          armed: measurementArmed,
+          start: measurementStart ? { ...measurementStart } : null,
+          measurement: measurement
+            ? {
+                start: { ...measurement.start },
+                end: { ...measurement.end }
+              }
+            : null
+        });
+      }
       measurementArmed = false;
       measurementStart = null;
       measurement = null;
@@ -10011,6 +10381,10 @@
     },
     clearPins() {
       if (!savedPins.length) return false;
+      snapshotMapClear('pins', {
+        pins: savedPins.map(pin => ({ ...pin })),
+        activePinId
+      });
       savedPins = [];
       pinArmed = false;
       if (activePinId) {
