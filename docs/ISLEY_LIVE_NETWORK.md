@@ -204,6 +204,67 @@ local development.
 - Ingest is rate-limited and clients reconnect with bounded exponential backoff.
 - RCON credentials never leave the bridge and are never sent to a player.
 
+## Viewer stream versions
+
+Viewer connections default to **stream v1**: every frame is a complete
+`{type:"snapshot", snapshot}` JSON document — unchanged since launch, and old
+clients keep working forever.
+
+Clients may opt in to **stream v2 (delta encoding)** per connection by sending
+a control frame right after connect:
+
+```json
+{"type":"hello","maxStreamVersion":2}
+```
+
+The relay answers `{type:"hello", streamVersion, keyframeIntervalFrames,
+deltaEncoding}` and always sends a **keyframe** (`type:"snapshot",
+keyframe:true, streamVersion:2`) as the first frame after negotiation. After
+that it sends `type:"delta"` frames: apply `upserted` entities by `id`, delete
+`removed` ids, replace `self` if present, remove self if `selfRemoved`, and
+overwrite scalar fields only when present (`null` = unchanged; `sequence`,
+`relayAgeMilliseconds`, `sampledAt`, and counts are always present). A full
+keyframe replaces state every `keyframeIntervalFrames` (default 240, validated
+16–4096) and whenever the relay detects a server change or delta-construction
+failure. Deltas are computed against the last snapshot actually sent on that
+connection, so coalesced frames cannot corrupt state.
+
+Rules for client authors (the desktop overlay follows them):
+
+- Never apply a partial delta: validate first, reconnect for a fresh keyframe
+  on any malformed frame or sequence gap.
+- If the relay answers a `streamVersion` above what you understand, show an
+  update-required state; do not attempt to parse.
+- If the relay never answers `hello` (old relay), stay on v1 — the wire format
+  is byte-for-byte identical to unnegotiated connections.
+
+Server-side knobs: `Relay__ViewerDeltaEncodingEnabled` (default `true`) is the
+kill switch; `Relay__ViewerKeyframeIntervalFrames` sets the keyframe cadence.
+Mixed v1/v2 viewer fleets coexist on one relay. The Isley overlay negotiates
+v2 by default (`RelayStreamV2Enabled` in `isley-extras.json` is the client
+kill switch) and shows ` · v2 deltas` in the live status when active.
+
+## Relay metrics and bridge diagnostics
+
+The relay exposes operational counters at:
+
+```text
+GET http://127.0.0.1:5209/metrics
+```
+
+Loopback-only by default — aggregate counters only (frames relayed, rate-limit
+rejections, viewer connections total, currently active bridges/viewers,
+started-at, uptime seconds), no bridge server IDs, no Steam IDs. Set
+`Relay__MetricsPubliclyVisible=true` only if you deliberately want the
+aggregate numbers public; responses are `no-store` + `nosniff` either way.
+
+The bridge's `GET /` and `GET /status` JSON include a `source` block
+(`mode`, `rconEnabled`, `rconConfigured`, `pluginEnabled`, `pluginCapable`,
+`allowRemotePlugin`), top-level `relayConfigured`, and
+`lastSuccessfulPublishAt` (last relay publish that succeeded — the legacy
+`lastPublishedAt` field reports the same instant). The loopback `/status/ui`
+page shows the same capability and last-success lines.
+
 ## Scaling
 
 One relay instance supports many bridges and player nodes, with per-server
