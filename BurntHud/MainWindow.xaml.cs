@@ -1685,4 +1685,16 @@ public partial class MainWindow : Window
             liveGrowthAvailable ? snapshot.GrowthPercent : 0);
     }
 
+    // Wave-2 sidecar DTO for the bounded extras that live beside the main
+    // preferences file (voice peer volume memory + Steam friend groups).
+    // Serialized by the append-only helpers at the end of MainWindow.Settings.cs.
+    private sealed class OverlayExtrasSettings
+    {
+        public const int CurrentSchemaVersion = 1;
+
+        public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+        public List<VoicePeerVolumeEntry> VoicePeerVolumes { get; set; } = [];
+        public List<SteamFriendGroupEntry> SteamFriendGroups { get; set; } = [];
+    }
+
 }

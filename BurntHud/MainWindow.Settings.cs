@@ -945,4 +945,129 @@ public partial class MainWindow
         _ = ShowHotkeyToastAsync($"{presentation.Title} · {presentation.Detail}", true);
         AddTacticalEvent("COACH", presentation.Title, presentation.Detail);
     }
+
+    // ===== Wave-2 overlay extras sidecar (per-peer voice volume memory and
+    // Steam friend groups). Kept in a small "isley-extras.json" file beside the
+    // active preferences file so the main MapperSettings schema stays untouched.
+    // Load is fully tolerant (corrupt or oversized sidecars fall back to empty),
+    // save mirrors the atomic temp-file + verify pattern used by SaveSettings.
+
+    private const long OverlayExtrasMaximumBytes = 256 * 1024;
+
+    private bool _overlayExtrasLoaded;
+    private List<VoicePeerVolumeEntry> _overlayVoicePeerVolumes = [];
+    private List<SteamFriendGroupEntry> _overlayFriendGroups = [];
+
+    private IEnumerable<string> OverlayExtrasCandidatePaths() =>
+        new[] { _activeSettingsPath, PrimarySettingsPath, PortableSettingsPath }
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(path => Path.GetDirectoryName(path))
+            .Where(directory => !string.IsNullOrWhiteSpace(directory))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(directory => Path.Combine(directory!, "isley-extras.json"));
+
+    private void EnsureOverlayExtrasLoaded()
+    {
+        if (_overlayExtrasLoaded)
+        {
+            return;
+        }
+        _overlayExtrasLoaded = true;
+
+        var candidates = OverlayExtrasCandidatePaths()
+            .Where(File.Exists)
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .ToList();
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                if (new FileInfo(candidate).Length > OverlayExtrasMaximumBytes)
+                {
+                    continue;
+                }
+
+                var extras = JsonSerializer.Deserialize<OverlayExtrasSettings>(
+                    File.ReadAllText(candidate));
+                if (extras is null)
+                {
+                    continue;
+                }
+
+                var now = DateTimeOffset.UtcNow;
+                _overlayVoicePeerVolumes = VoicePeerVolumeLogic.NormalizeEntries(
+                    extras.VoicePeerVolumes,
+                    now);
+                _overlayFriendGroups = SteamFriendGroupLogic.NormalizeGroups(
+                    extras.SteamFriendGroups,
+                    _steamFriendWatchlist.Select(entry => entry.Id),
+                    now);
+                return;
+            }
+            catch (Exception exception) when (
+                exception is JsonException or IOException or UnauthorizedAccessException)
+            {
+                // A corrupt or unreadable sidecar must never block the overlay;
+                // fall through to the next candidate, then to empty extras.
+            }
+        }
+    }
+
+    private void SaveOverlayExtras()
+    {
+        var extras = new OverlayExtrasSettings
+        {
+            SchemaVersion = OverlayExtrasSettings.CurrentSchemaVersion,
+            VoicePeerVolumes = VoicePeerVolumeLogic.NormalizeEntries(
+                _overlayVoicePeerVolumes,
+                DateTimeOffset.UtcNow),
+            SteamFriendGroups = SteamFriendGroupLogic.NormalizeGroups(
+                _overlayFriendGroups,
+                validWatchIds: null,
+                DateTimeOffset.UtcNow)
+        };
+        _overlayVoicePeerVolumes = extras.VoicePeerVolumes;
+        var serialized = JsonSerializer.Serialize(extras, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+        foreach (var candidate in OverlayExtrasCandidatePaths())
+        {
+            string? temporaryPath = null;
+            try
+            {
+                var directory = Path.GetDirectoryName(candidate);
+                if (string.IsNullOrWhiteSpace(directory))
+                {
+                    continue;
+                }
+
+                Directory.CreateDirectory(directory);
+                temporaryPath = Path.Combine(
+                    directory,
+                    $".{Path.GetFileName(candidate)}.{Guid.NewGuid():N}.tmp");
+                File.WriteAllText(temporaryPath, serialized);
+                File.Move(temporaryPath, candidate, overwrite: true);
+                temporaryPath = null;
+                if (!File.Exists(candidate)
+                    || !string.Equals(
+                        File.ReadAllText(candidate),
+                        serialized,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                return;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                if (!string.IsNullOrWhiteSpace(temporaryPath))
+                {
+                    try { File.Delete(temporaryPath); } catch { }
+                }
+            }
+        }
+    }
 }

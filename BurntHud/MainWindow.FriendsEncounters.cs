@@ -588,8 +588,11 @@ public partial class MainWindow
 
     private void UpdateFriendRoster()
     {
+        EnsureMapWatchlistBridgeInstalled();
         UpdateSteamFriendPicker();
         UpdateSteamFriendWatchlist();
+        UpdateFriendGroups();
+        UpdateEncounterWatchlist();
         _ = TryAutoFollowSteamFriendAsync();
         var signature = string.Join('|', new[]
         {
@@ -1450,5 +1453,457 @@ public partial class MainWindow
         }
 
         FriendRosterStatus.Foreground = (Brush)FindResource("SecondaryTextBrush");
+    }
+
+    // ===== Wave-2: Steam friend groups (persisted via overlay extras sidecar)
+    // and the session-only encounter watchlist (map context action). All UI is
+    // built programmatically so the shared XAML stays untouched.
+
+    private readonly List<EncounterWatchEntry> _encounterWatchlist = [];
+    private string _selectedFriendGroupId = string.Empty;
+    private string _friendGroupUiSignature = string.Empty;
+    private StackPanel? _friendGroupRootPanel;
+    private TextBlock? _friendGroupStatusText;
+    private TextBox? _friendGroupNameInputBox;
+    private StackPanel? _friendGroupListPanel;
+    private Button? _friendGroupCreateButton;
+    private Button? _friendGroupAddMemberButton;
+    private Button? _friendGroupRemoveButton;
+    private StackPanel? _encounterWatchRootPanel;
+    private TextBlock? _encounterWatchStatusText;
+    private StackPanel? _encounterWatchListPanel;
+    private string _encounterWatchUiSignature = string.Empty;
+
+    private void EnsureFriendGroupsUi()
+    {
+        if (_friendGroupRootPanel is not null || SteamFriendWatchContentPanel is null)
+        {
+            return;
+        }
+
+        _friendGroupRootPanel = new StackPanel();
+        _friendGroupStatusText = new TextBlock
+        {
+            Margin = new Thickness(1, 0, 1, 6),
+            FontSize = 8,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            Text = "Group watched Steam friends into named squads."
+        };
+        _friendGroupNameInputBox = new TextBox
+        {
+            Style = (Style)FindResource("DrawerTextBox"),
+            MaxLength = 48,
+            ToolTip = "Name a squad (24 characters after cleanup)"
+        };
+        _friendGroupNameInputBox.TextChanged += (_, _) =>
+        {
+            _friendGroupUiSignature = string.Empty;
+            UpdateFriendGroups();
+        };
+        _friendGroupCreateButton = new Button
+        {
+            Style = (Style)FindResource("DrawerCompactButton"),
+            Content = "CREATE GROUP",
+            ToolTip = $"Create a named squad (up to {SteamFriendGroupLogic.MaximumGroups})"
+        };
+        _friendGroupCreateButton.Click += FriendGroupCreateButton_Click;
+        _friendGroupRemoveButton = new Button
+        {
+            Style = (Style)FindResource("DrawerCompactButton"),
+            Content = "REMOVE GROUP",
+            ToolTip = "Delete the selected squad; watched friends stay watched"
+        };
+        _friendGroupRemoveButton.Click += FriendGroupRemoveButton_Click;
+        var createGrid = new UniformGrid { Columns = 2, Margin = new Thickness(-2, 1, -2, 3) };
+        createGrid.Children.Add(_friendGroupCreateButton);
+        createGrid.Children.Add(_friendGroupRemoveButton);
+        _friendGroupListPanel = new StackPanel();
+        _friendGroupAddMemberButton = new Button
+        {
+            Style = (Style)FindResource("DrawerCompactButton"),
+            Content = "ADD SELECTED WATCH",
+            Margin = new Thickness(-2, 1, -2, 0),
+            ToolTip = "Add the selected watched friend above to the selected squad"
+        };
+        _friendGroupAddMemberButton.Click += FriendGroupAddMemberButton_Click;
+        var groupNote = new TextBlock
+        {
+            Margin = new Thickness(1, 3, 1, 0),
+            FontSize = 7,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            Text = $"Squads are stored locally · {SteamFriendGroupLogic.MaximumGroups} groups max · " +
+                   $"{SteamFriendGroupLogic.MaximumTotalMembers} memberships max · " +
+                   "LIVE counts use the authorized live map only."
+        };
+        _friendGroupRootPanel.Children.Add(new TextBlock
+        {
+            Style = (Style)FindResource("SectionLabel"),
+            Margin = new Thickness(1, 6, 0, 6),
+            Text = "FRIEND GROUPS"
+        });
+        _friendGroupRootPanel.Children.Add(_friendGroupStatusText);
+        _friendGroupRootPanel.Children.Add(_friendGroupNameInputBox);
+        _friendGroupRootPanel.Children.Add(createGrid);
+        _friendGroupRootPanel.Children.Add(_friendGroupListPanel);
+        _friendGroupRootPanel.Children.Add(_friendGroupAddMemberButton);
+        _friendGroupRootPanel.Children.Add(groupNote);
+        SteamFriendWatchContentPanel.Children.Add(_friendGroupRootPanel);
+    }
+
+    private void UpdateFriendGroups()
+    {
+        EnsureFriendGroupsUi();
+        if (_friendGroupRootPanel is null
+            || _friendGroupStatusText is null
+            || _friendGroupListPanel is null
+            || _friendGroupCreateButton is null
+            || _friendGroupAddMemberButton is null
+            || _friendGroupRemoveButton is null
+            || _friendGroupNameInputBox is null)
+        {
+            return;
+        }
+
+        EnsureOverlayExtrasLoaded();
+        // Members reference watch entries by opaque id; pruning drops ids whose
+        // watch was removed (the sidecar is rewritten on the next real save and
+        // load-time normalization applies the same filter).
+        _overlayFriendGroups = SteamFriendGroupLogic.NormalizeGroups(
+            _overlayFriendGroups,
+            _steamFriendWatchlist.Select(entry => entry.Id),
+            DateTimeOffset.UtcNow);
+        var selectedGroup = _overlayFriendGroups.FirstOrDefault(group =>
+            string.Equals(group.Id, _selectedFriendGroupId, StringComparison.Ordinal));
+        if (selectedGroup is null)
+        {
+            selectedGroup = _overlayFriendGroups.FirstOrDefault();
+            _selectedFriendGroupId = selectedGroup?.Id ?? string.Empty;
+        }
+
+        var signature = string.Join('|',
+            _streamerMode,
+            LiveMapServicesActive,
+            _selectedFriendGroupId,
+            _selectedSteamFriendWatchId,
+            SteamFriendGroupLogic.NormalizeGroupName(_friendGroupNameInputBox.Text),
+            string.Join(';', _overlayFriendGroups.Select(group =>
+                $"{group.Id}:{group.Name}:{group.MemberWatchIds.Count}:" +
+                $"{SteamFriendGroupLogic.CountLiveMembers(
+                    group,
+                    _steamFriendWatchlist,
+                    LiveMapServicesActive ? _friendRoster.Select(friend => friend.Name) : null)}")));
+        if (string.Equals(signature, _friendGroupUiSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+        _friendGroupUiSignature = signature;
+
+        if (_streamerMode)
+        {
+            _friendGroupRootPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _friendGroupRootPanel.Visibility = Visibility.Visible;
+        _friendGroupListPanel.Children.Clear();
+        var totalMembers = _overlayFriendGroups.Sum(group => group.MemberWatchIds.Count);
+        _friendGroupStatusText.Foreground = (Brush)FindResource("SecondaryTextBrush");
+        _friendGroupStatusText.Text = _overlayFriendGroups.Count == 0
+            ? "No squads yet · name one and create it, then add watched friends"
+            : $"{_overlayFriendGroups.Count}/{SteamFriendGroupLogic.MaximumGroups} SQUADS · " +
+              $"{totalMembers}/{SteamFriendGroupLogic.MaximumTotalMembers} MEMBERSHIPS" +
+              (LiveMapServicesActive ? string.Empty : " · PRESENCE PAUSED");
+        foreach (var group in _overlayFriendGroups)
+        {
+            var liveCount = SteamFriendGroupLogic.CountLiveMembers(
+                group,
+                _steamFriendWatchlist,
+                LiveMapServicesActive ? _friendRoster.Select(friend => friend.Name) : null);
+            var memberNames = group.MemberWatchIds
+                .Select(id => _steamFriendWatchlist.FirstOrDefault(entry =>
+                    string.Equals(entry.Id, id, StringComparison.Ordinal))?.MapName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
+            var state = !LiveMapServicesActive
+                ? $"{group.MemberWatchIds.Count} MEMBERS · PAUSED"
+                : group.MemberWatchIds.Count == 0
+                    ? "EMPTY"
+                    : $"{liveCount}/{group.MemberWatchIds.Count} LIVE";
+            var displayName = group.Name.Length <= 18 ? group.Name : $"{group.Name[..17]}…";
+            var button = new Button
+            {
+                Style = (Style)FindResource("DrawerButton"),
+                Height = 30,
+                Margin = new Thickness(0, 0, 0, 4),
+                FontSize = 9,
+                Content = $"{(LiveMapServicesActive && liveCount > 0 ? "●" : "○")} {displayName} · {state}",
+                Tag = group.Id,
+                ToolTip = memberNames.Count == 0
+                    ? $"{group.Name} · no members yet · select a watched friend, then ADD SELECTED WATCH"
+                    : $"{group.Name} · {string.Join(", ", memberNames.Take(8))}" +
+                      (memberNames.Count > 8 ? $" +{memberNames.Count - 8} more" : string.Empty)
+            };
+            button.Click += FriendGroupButton_Click;
+            SetToggleButtonState(
+                button,
+                string.Equals(group.Id, _selectedFriendGroupId, StringComparison.Ordinal));
+            _friendGroupListPanel.Children.Add(button);
+        }
+
+        var selectedWatch = _steamFriendWatchlist.FirstOrDefault(entry =>
+            string.Equals(entry.Id, _selectedSteamFriendWatchId, StringComparison.Ordinal));
+        _friendGroupCreateButton.IsEnabled =
+            SteamFriendGroupLogic.NormalizeGroupName(_friendGroupNameInputBox.Text).Length > 0
+            && _overlayFriendGroups.Count < SteamFriendGroupLogic.MaximumGroups;
+        _friendGroupAddMemberButton.IsEnabled = selectedGroup is not null
+                                                && selectedWatch is not null
+                                                && !selectedGroup.MemberWatchIds.Any(id =>
+                                                    string.Equals(id, selectedWatch.Id, StringComparison.Ordinal));
+        _friendGroupRemoveButton.IsEnabled = selectedGroup is not null;
+    }
+
+    private void FriendGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string groupId })
+        {
+            return;
+        }
+
+        _selectedFriendGroupId = groupId;
+        _friendGroupUiSignature = string.Empty;
+        UpdateFriendGroups();
+    }
+
+    private async void FriendGroupCreateButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_streamerMode)
+        {
+            return;
+        }
+
+        EnsureOverlayExtrasLoaded();
+        if (!SteamFriendGroupLogic.TryCreateGroup(
+                _friendGroupNameInputBox?.Text,
+                _overlayFriendGroups,
+                DateTimeOffset.UtcNow,
+                out var group,
+                out var error))
+        {
+            await ShowHotkeyToastAsync(error.ToUpperInvariant(), false);
+            return;
+        }
+
+        _overlayFriendGroups.Add(group);
+        _selectedFriendGroupId = group.Id;
+        if (_friendGroupNameInputBox is not null)
+        {
+            _friendGroupNameInputBox.Text = string.Empty;
+        }
+        SaveOverlayExtras();
+        _friendGroupUiSignature = string.Empty;
+        UpdateFriendGroups();
+        await ShowHotkeyToastAsync($"SQUAD {group.Name.ToUpperInvariant()} READY", true);
+    }
+
+    private async void FriendGroupAddMemberButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_streamerMode)
+        {
+            return;
+        }
+
+        EnsureOverlayExtrasLoaded();
+        var watch = _steamFriendWatchlist.FirstOrDefault(entry =>
+            string.Equals(entry.Id, _selectedSteamFriendWatchId, StringComparison.Ordinal));
+        if (!SteamFriendGroupLogic.TryAddMember(
+                _overlayFriendGroups,
+                _selectedFriendGroupId,
+                watch?.Id,
+                DateTimeOffset.UtcNow,
+                out var error))
+        {
+            await ShowHotkeyToastAsync(error.ToUpperInvariant(), false);
+            return;
+        }
+
+        SaveOverlayExtras();
+        _friendGroupUiSignature = string.Empty;
+        UpdateFriendGroups();
+        await ShowHotkeyToastAsync(
+            $"{(watch?.MapName ?? "FRIEND").ToUpperInvariant()} ADDED TO SQUAD",
+            true);
+    }
+
+    private async void FriendGroupRemoveButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_streamerMode)
+        {
+            return;
+        }
+
+        EnsureOverlayExtrasLoaded();
+        var removed = _overlayFriendGroups.FirstOrDefault(group =>
+            string.Equals(group.Id, _selectedFriendGroupId, StringComparison.Ordinal));
+        if (removed is null)
+        {
+            return;
+        }
+
+        _overlayFriendGroups.RemoveAll(group =>
+            string.Equals(group.Id, removed.Id, StringComparison.Ordinal));
+        _selectedFriendGroupId = _overlayFriendGroups.FirstOrDefault()?.Id ?? string.Empty;
+        SaveOverlayExtras();
+        _friendGroupUiSignature = string.Empty;
+        UpdateFriendGroups();
+        await ShowHotkeyToastAsync(
+            $"SQUAD {removed.Name.ToUpperInvariant()} REMOVED · WATCHES KEPT",
+            true);
+    }
+
+    private void EnsureEncounterWatchlistUi()
+    {
+        if (_encounterWatchRootPanel is not null
+            || EncounterStatusText?.Parent is not Panel parent)
+        {
+            return;
+        }
+
+        _encounterWatchRootPanel = new StackPanel();
+        _encounterWatchStatusText = new TextBlock
+        {
+            Margin = new Thickness(1, 0, 1, 4),
+            FontSize = 8,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            Text = "Right-click a live player marker to watch them."
+        };
+        _encounterWatchListPanel = new StackPanel();
+        var watchNote = new TextBlock
+        {
+            Margin = new Thickness(1, 3, 1, 0),
+            FontSize = 7,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            Text = $"Session-only · {EncounterWatchlistLogic.MaximumWatchedPlayers} max · " +
+                   "distance and direction are the snapshot from the moment of the watch."
+        };
+        _encounterWatchRootPanel.Children.Add(new TextBlock
+        {
+            Style = (Style)FindResource("SectionLabel"),
+            Margin = new Thickness(1, 6, 0, 6),
+            Text = "ENCOUNTER WATCHLIST"
+        });
+        _encounterWatchRootPanel.Children.Add(_encounterWatchStatusText);
+        _encounterWatchRootPanel.Children.Add(_encounterWatchListPanel);
+        _encounterWatchRootPanel.Children.Add(watchNote);
+        parent.Children.Insert(parent.Children.IndexOf(EncounterStatusText) + 1, _encounterWatchRootPanel);
+    }
+
+    private void UpdateEncounterWatchlist()
+    {
+        EnsureEncounterWatchlistUi();
+        if (_encounterWatchRootPanel is null
+            || _encounterWatchStatusText is null
+            || _encounterWatchListPanel is null)
+        {
+            return;
+        }
+
+        if (_streamerMode)
+        {
+            _encounterWatchRootPanel.Visibility = Visibility.Collapsed;
+            _encounterWatchUiSignature = string.Empty;
+            return;
+        }
+
+        _encounterWatchRootPanel.Visibility = Visibility.Visible;
+        var signature = string.Join('|', _encounterWatchlist.Select(entry =>
+            $"{entry.Name}:{entry.DistanceMu}:{entry.Cardinal}"));
+        if (string.Equals(signature, _encounterWatchUiSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+        _encounterWatchUiSignature = signature;
+
+        _encounterWatchListPanel.Children.Clear();
+        _encounterWatchStatusText.Text = _encounterWatchlist.Count == 0
+            ? "Right-click a live player marker to watch them this session"
+            : $"{_encounterWatchlist.Count}/{EncounterWatchlistLogic.MaximumWatchedPlayers} WATCHED · SESSION ONLY";
+        foreach (var entry in _encounterWatchlist)
+        {
+            var displayName = entry.Name.Length <= 22 ? entry.Name : $"{entry.Name[..21]}…";
+            var snapshot = entry.DistanceMu.HasValue
+                ? $"WAS {entry.DistanceMu.Value} MU {(string.IsNullOrEmpty(entry.Cardinal) ? string.Empty : entry.Cardinal)}".TrimEnd()
+                : "NO DISTANCE SNAPSHOT";
+            var button = new Button
+            {
+                Style = (Style)FindResource("DrawerButton"),
+                Height = 30,
+                Margin = new Thickness(0, 0, 0, 4),
+                FontSize = 9,
+                Content = $"◈ {displayName} · {snapshot}",
+                Tag = entry.Name,
+                ToolTip = $"{entry.Name} · watched from the live map context action · select to remove"
+            };
+            button.Click += EncounterWatchEntryButton_Click;
+            _encounterWatchListPanel.Children.Add(button);
+        }
+    }
+
+    private async void EncounterWatchEntryButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: string entryName })
+        {
+            return;
+        }
+
+        _encounterWatchlist.RemoveAll(entry =>
+            string.Equals(entry.Name, entryName, StringComparison.OrdinalIgnoreCase));
+        _encounterWatchUiSignature = string.Empty;
+        UpdateEncounterWatchlist();
+        await ShowHotkeyToastAsync("WATCH REMOVED", true);
+    }
+
+    // Bridge entry point for the map shell's right-click "Watch player" context
+    // action. Input is already structurally validated by the bridge in
+    // MainWindow.MapTools.cs; names are normalized here before any use.
+    private async Task AddEncounterWatchFromMapAsync(string? rawName, double? distanceMu, string? cardinal)
+    {
+        if (_streamerMode)
+        {
+            // Fail-closed: encounter context stays hidden in streamer mode.
+            return;
+        }
+
+        var name = EncounterWatchlistLogic.NormalizeName(rawName);
+        if (name.Length == 0)
+        {
+            await ShowHotkeyToastAsync("WATCHLIST ADD BLOCKED · INVALID PLAYER", false);
+            return;
+        }
+
+        var alreadyWatched = _encounterWatchlist.Any(entry =>
+            string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase));
+        var updated = EncounterWatchlistLogic.Upsert(
+            _encounterWatchlist,
+            name,
+            EncounterWatchlistLogic.NormalizeDistanceMu(distanceMu),
+            cardinal,
+            DateTimeOffset.UtcNow);
+        _encounterWatchlist.Clear();
+        _encounterWatchlist.AddRange(updated);
+        _encounterWatchUiSignature = string.Empty;
+        UpdateEncounterWatchlist();
+        AddTacticalEvent(
+            "PLAYER",
+            alreadyWatched ? "Watch refreshed" : "Player watched",
+            $"{name} · live map context action · session-only watchlist");
+        await ShowHotkeyToastAsync(
+            alreadyWatched
+                ? $"WATCH REFRESHED · {name.ToUpperInvariant()}"
+                : $"WATCHING {name.ToUpperInvariant()} · SESSION ONLY",
+            true);
     }
 }
