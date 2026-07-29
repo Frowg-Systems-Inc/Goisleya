@@ -110,12 +110,8 @@ const mutations = [
     verifiers: ['verify-controller.cjs'],
     expect: 'fail'
   },
-  // --- False-pass probes: document known contract-suite weaknesses. ---
-  // A "pass" result here is EXPECTED today and must be documented in
-  // docs/VERIFIER-COVERAGE.md. If a probe starts failing, the suite got
-  // stronger: move it above and expect "fail".
   {
-    id: 'probe-crypto-kdf-prefix-rekeyed',
+    id: 'crypto-kdf-prefix-rekeyed',
     file: 'BurntHud/Voice/voice-crypto.js',
     description: 'room-key KDF domain-separation prefix rekeyed (self-consistent)',
     replace: [{
@@ -124,18 +120,18 @@ const mutations = [
       occurrences: 1
     }],
     verifiers: ['verify-voice-crypto.cjs', 'verify-overlay-scripts.cjs'],
-    expect: 'pass'
+    expect: 'fail'
   },
   {
-    id: 'probe-crypto-gcm-tag-shortened',
+    id: 'crypto-gcm-tag-shortened',
     file: 'BurntHud/Voice/voice-crypto.js',
     description: 'AES-GCM authentication tag shortened from 128 to 32 bits',
     replace: [{ from: 'tagLength: 128', to: 'tagLength: 32', occurrences: 2 }],
     verifiers: ['verify-voice-crypto.cjs', 'verify-overlay-scripts.cjs'],
-    expect: 'pass'
+    expect: 'fail'
   },
   {
-    id: 'probe-voice-glare-order-single-site',
+    id: 'voice-glare-order-single-site',
     file: 'BurntHud/Voice/voice.js',
     description: 'glare ordering inverted at only one of two duplicated call sites',
     replace: [{
@@ -145,16 +141,22 @@ const mutations = [
       apply: 'first'
     }],
     verifiers: ['verify-overlay-scripts.cjs'],
-    expect: 'pass'
+    expect: 'fail'
   },
   {
-    id: 'probe-controller-nogo-vertex-cap-raised',
+    id: 'controller-nogo-vertex-cap-raised',
     file: 'BurntHud/Map/isley-map-controller.js',
-    description: 'no-go vertex cap raised 12 -> 120 (asserted literal is a prefix of the mutant)',
+    description: 'no-go vertex cap raised 12 -> 120 (boundary-aware assertion must not prefix-match)',
     replace: [{ from: 'noGoAreaMaximumVertices = 12', to: 'noGoAreaMaximumVertices = 120', occurrences: 1 }],
     verifiers: ['verify-controller.cjs'],
-    expect: 'pass'
+    expect: 'fail'
   }
+  // --- False-pass probes: document known contract-suite weaknesses. ---
+  // A "pass" result here is EXPECTED and must be documented in
+  // docs/VERIFIER-COVERAGE.md. If a probe starts failing, the suite got
+  // stronger: move it above and expect "fail". All four probes documented in
+  // the first mutation audit were reclassified as hard mutations above once
+  // the contracts learned to catch them; none remain today.
 ];
 
 const copyTree = (relativeDir, targetDir, options = {}) => {
