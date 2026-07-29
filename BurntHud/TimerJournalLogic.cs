@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -194,7 +195,7 @@ internal static class TimerJournalLogic
             }
 
             var parsed = new List<TimerJournalEntry>();
-            foreach (var item in items)
+            foreach (var item in items.EnumerateArray())
             {
                 if (parsed.Count >= MaxEntries
                     || item.ValueKind != JsonValueKind.Object
