@@ -195,3 +195,19 @@ palette entry, heading decay on compass) — none blocking.
 Plan v2 complete. Remaining optional follow-ups: whitespace burn-down in
 MainWindow.Voice.cs/Commands.cs, analyzer backlog (CA1859/CA1861/CA1305),
 `_lastServerStatus` dead-state decision, format-check promotion to blocking.
+
+## 10. W8 — final stragglers (#41) + release-constant sync
+
+- Heading confidence decay on the map compass + position-copy surfaces
+  (held value, honest stale tooltips; clipboard text residual noted).
+- `tactical-log-export` palette entry; ledger 124 → **125 in all 6 sites**
+  (a hidden 6th — RelayStreamV2Verifier's count guard — found and bumped).
+- Stacked-guidance ranking: NextMoveLogic cascade → CollectCandidates +
+  StackedGuidanceLogic (deterministic rank, top ≤3, `+N` overflow);
+  Evaluate byte-identical (28-ladder parity suite green); new verifier.
+- README "What's new in 1.4.0". Download-site test/page constants synced
+  to 1.4.0 (hashes, version, date — the runner-side updates the workflow
+  cannot return; noted for the next release run).
+
+**Plan v2: COMPLETE.** Catalog 125 · 84/84 logic-file coverage · 73
+verifiers · 13/13 mutations caught · CI 5 jobs green · v1.4.0 released.
