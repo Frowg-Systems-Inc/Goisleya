@@ -670,7 +670,7 @@ public partial class MainWindow
             return;
         }
 
-        await _isleyRelayClient.ConnectAsync(join, accessToken);
+        await _isleyRelayClient.ConnectAsync(join, accessToken, RelayStreamV2Enabled);
         await RefreshIsleyRelayPrivacyAsync(join, accessToken);
         UpdateIsleyRelayPresentation();
     }
@@ -753,7 +753,7 @@ public partial class MainWindow
                     cancellationToken);
                 accessToken = credential.AccessToken;
             }
-            await _isleyRelayClient.ConnectAsync(join, accessToken, cancellationToken);
+            await _isleyRelayClient.ConnectAsync(join, accessToken, RelayStreamV2Enabled, cancellationToken);
             await RefreshIsleyRelayPrivacyAsync(join, accessToken, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -1137,9 +1137,14 @@ public partial class MainWindow
         var visibility = snapshot.VisibilityPolicy == TelemetryVisibilityPolicy.ServerWide
             ? "server-wide"
             : "consent-filtered";
+        // Honest stream surface: negotiated v2 delta delivery shows a subtle
+        // "v2 deltas" suffix; version-1 relays keep the original "live" text.
+        var streamLabel = _isleyRelayClient.DeltaEncodingActive
+            ? " · v2 deltas"
+            : string.Empty;
         var networkSummary =
             $" · {nodeCount} node{(nodeCount == 1 ? string.Empty : "s")}" +
-            $" · {snapshot.VisibleEntityCount} visible · {visibility}{updateRate}";
+            $" · {snapshot.VisibleEntityCount} visible · {visibility}{updateRate}{streamLabel}";
         _isleyRelayAgeMs = snapshot.RelayAgeMilliseconds;
         _isleyRelayHz = snapshot.UpdateRateHz;
         _isleyRelayConsentFiltered =
@@ -1272,7 +1277,7 @@ public partial class MainWindow
         IsleyRelayStatusText.Foreground = presentationState switch
         {
             "live" => (Brush)FindResource("SuccessBrush"),
-            "error" => (Brush)FindResource("WarningBrush"),
+            "error" or "update-required" => (Brush)FindResource("WarningBrush"),
             "reconnecting" or "connecting" or "signing-in" or "waiting" =>
                 (Brush)FindResource("AccentBrush"),
             _ => (Brush)FindResource("SecondaryTextBrush")
@@ -1285,7 +1290,7 @@ public partial class MainWindow
                 ? "CONNECTING…"
                 : "CONNECT WITH STEAM";
         IsleyRelayDisconnectButton.IsEnabled =
-            _isleyRelayState is "live" or "connecting" or "reconnecting" or "waiting";
+            _isleyRelayState is "live" or "connecting" or "reconnecting" or "waiting" or "update-required";
         var hasCredential = _isleyRelayJoin is { } join
                             && _isleyRelayClient.TryReadCredential(join, out _);
         IsleyRelayForgetButton.IsEnabled = hasCredential;
@@ -1338,7 +1343,9 @@ public partial class MainWindow
 
         var health = LiveHealthLogic.Present(
             _liveHealthMapLabel,
-            _isleyRelayState,
+            // The shared health strip has no dedicated glyph for a relay that
+            // needs a newer Isley build; surface it as a network error there.
+            _isleyRelayState == "update-required" ? "error" : _isleyRelayState,
             _isleyRelayAgeMs,
             _isleyRelayHz,
             _voiceBridgeRunning,
