@@ -69,3 +69,30 @@ jobs:
       - name: Verify the complete product
         shell: pwsh
         run: .\scripts\verify-all.ps1
+
+  download-site:
+    name: Build, lint, and test the download site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out Isley
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: download-site/package-lock.json
+
+      - name: Install site dependencies
+        working-directory: download-site
+        run: npm ci
+
+      - name: Lint the download site
+        working-directory: download-site
+        run: npm run lint
+
+      - name: Rendered-html tests
+        working-directory: download-site
+        run: npm test

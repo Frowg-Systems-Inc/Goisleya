@@ -279,9 +279,14 @@
       fill: #ffe29a;
     }
 
-    /* Marker interpolation: player groups glide between provider frames. */
+    /* Marker interpolation: player groups glide between provider frames, and
+       gateway zone/resource markers glide between refreshed datasets. */
     #providerPlayers g[data-isley-player],
-    #layer-heatmap circle[data-isley-live-heat] {
+    #layer-heatmap circle[data-isley-live-heat],
+    #layer-sanctuaries [data-isley-zone],
+    #layer-migration [data-isley-zone],
+    #layer-patrol [data-isley-zone],
+    #layer-food [data-isley-resource] {
       transition: transform 900ms linear;
     }
     .isley-player-label {
@@ -671,7 +676,11 @@
     @media (prefers-reduced-motion: reduce) {
       .isley-label { transition: none; }
       #providerPlayers g[data-isley-player],
-      #layer-heatmap circle[data-isley-live-heat] {
+      #layer-heatmap circle[data-isley-live-heat],
+      #layer-sanctuaries [data-isley-zone],
+      #layer-migration [data-isley-zone],
+      #layer-patrol [data-isley-zone],
+      #layer-food [data-isley-resource] {
         transition: none;
       }
       .isley-zone,
@@ -1179,48 +1188,103 @@
         };
       };
 
+      // Gateway zone and resource markers are keyed and reused per layer so a
+      // refreshed dataset glides them between positions with the same CSS
+      // transitions as live player markers instead of teleporting on a full
+      // layer rebuild. Keys carry an occurrence suffix so duplicate labels
+      // still render one node each and layer counts stay unchanged.
+      const zoneNodesByLayer = new Map();
+      const resourceNodes = new Map();
+      const occurrenceKey = (used, base) => {
+        const occurrence = used.get(base) || 0;
+        used.set(base, occurrence + 1);
+        return occurrence ? `${base}#${occurrence}` : base;
+      };
+      const pruneMarkerNodes = (nodes, alive) => {
+        for (const [key, node] of nodes) {
+          if (alive.has(key)) continue;
+          node.remove();
+          nodes.delete(key);
+        }
+      };
+      const relativeCoordinate = value => Math.round(value * 100) / 100;
+
       const renderZoneLayer = (root, zones, className) => {
-        root.replaceChildren();
+        let nodes = zoneNodesByLayer.get(root);
+        if (!nodes) {
+          nodes = new Map();
+          zoneNodesByLayer.set(root, nodes);
+        }
+        const alive = new Set();
+        const used = new Map();
         for (const zone of Array.isArray(zones) ? zones.slice(0, 100) : []) {
           const type = String(zone?.type || "").toLowerCase();
-          let shape = null;
+          const label = escapeText(zone?.label || "Gateway zone");
+          let center = null;
+          let radius = null;
+          let points = null;
           if (type === "circle") {
             const cx = validMapNumber(zone?.cx);
             const cy = validMapNumber(zone?.cy);
-            const radius = Number(zone?.r);
-            if (cx === null || cy === null || !Number.isFinite(radius)
-                || radius <= 0 || radius > 250) continue;
-            shape = createSvgElement("circle", {
-              cx,
-              cy,
-              r: radius,
-              class: `isley-zone ${className}`.trim()
-            });
+            const value = Number(zone?.r);
+            if (cx === null || cy === null || !Number.isFinite(value)
+                || value <= 0 || value > 250) continue;
+            center = { x: cx, y: cy };
+            radius = value;
           } else if (type === "polygon") {
-            const points = (Array.isArray(zone?.points) ? zone.points : [])
+            const valid = (Array.isArray(zone?.points) ? zone.points : [])
               .map(point => ({
                 x: validMapNumber(point?.x),
                 y: validMapNumber(point?.y)
               }))
               .filter(point => point.x !== null && point.y !== null)
               .slice(0, 64);
-            if (points.length < 3) continue;
-            shape = createSvgElement("polygon", {
-              points: points.map(point => `${point.x},${point.y}`).join(" "),
-              class: `isley-zone ${className}`.trim()
-            });
+            if (valid.length < 3) continue;
+            center = {
+              x: valid.reduce((sum, point) => sum + point.x, 0) / valid.length,
+              y: valid.reduce((sum, point) => sum + point.y, 0) / valid.length
+            };
+            points = valid;
           }
-          if (!shape) continue;
-          shape.dataset.sourceZone = "current-gamefiles";
-          const title = createSvgElement("title");
-          title.textContent = escapeText(zone?.label || "Gateway zone");
-          shape.appendChild(title);
-          root.appendChild(shape);
+          if (!center) continue;
+
+          const name = type === "circle" ? "circle" : "polygon";
+          const key = occurrenceKey(used, `${type}:${label}`);
+          alive.add(key);
+          let shape = nodes.get(key);
+          if (shape?.localName !== name) {
+            shape?.remove();
+            shape = createSvgElement(name, name === "circle"
+              ? { cx: 0, cy: 0, class: `isley-zone ${className}`.trim() }
+              : { class: `isley-zone ${className}`.trim() });
+            shape.dataset.isleyZone = "true";
+            shape.dataset.sourceZone = "current-gamefiles";
+            shape.appendChild(createSvgElement("title"));
+            root.appendChild(shape);
+            nodes.set(key, shape);
+          }
+          shape.firstChild.textContent = label;
+          if (name === "circle") {
+            if (Number(shape.getAttribute("r")) !== radius) {
+              shape.setAttribute("r", String(radius));
+            }
+          } else {
+            const relative = points
+              .map(point => `${relativeCoordinate(point.x - center.x)},${
+                relativeCoordinate(point.y - center.y)}`)
+              .join(" ");
+            if (shape.getAttribute("points") !== relative) {
+              shape.setAttribute("points", relative);
+            }
+          }
+          shape.style.transform = `translate(${center.x}px, ${center.y}px)`;
         }
+        pruneMarkerNodes(nodes, alive);
       };
 
       const renderResources = resources => {
-        resourceLayer.replaceChildren();
+        const alive = new Set();
+        const used = new Map();
         const buckets = [
           ["animals", resources?.animals],
           ["herbs", resources?.herbs],
@@ -1231,21 +1295,30 @@
             const x = validMapNumber(resource?.x);
             const y = validMapNumber(resource?.y);
             if (x === null || y === null) continue;
-            const marker = createSvgElement("circle", {
-              cx: x,
-              cy: y,
-              r: bucket === "animals" ? 3.15 : bucket === "herbs" ? 2.8 : 2.7,
-              class: "gateway-resource",
-              "data-bucket": bucket,
-              "vector-effect": "non-scaling-stroke"
-            });
-            const title = createSvgElement("title");
-            title.textContent = `${escapeText(resource?.name || "Resource")} · ${
+            const label = `${escapeText(resource?.name || "Resource")} · ${
               escapeText(resource?.group || bucket)}`;
-            marker.appendChild(title);
-            resourceLayer.appendChild(marker);
+            const key = occurrenceKey(used, `${bucket}:${label}`);
+            alive.add(key);
+            let marker = resourceNodes.get(key);
+            if (!marker) {
+              marker = createSvgElement("circle", {
+                cx: 0,
+                cy: 0,
+                r: bucket === "animals" ? 3.15 : bucket === "herbs" ? 2.8 : 2.7,
+                class: "gateway-resource",
+                "data-bucket": bucket,
+                "vector-effect": "non-scaling-stroke"
+              });
+              marker.dataset.isleyResource = "true";
+              marker.appendChild(createSvgElement("title"));
+              resourceLayer.appendChild(marker);
+              resourceNodes.set(key, marker);
+            }
+            marker.firstChild.textContent = label;
+            marker.style.transform = `translate(${x}px, ${y}px)`;
           }
         }
+        pruneMarkerNodes(resourceNodes, alive);
       };
 
       const renderCurrentLabels = dataset => {

@@ -65,6 +65,62 @@ test("server-renders the Isley download page", async () => {
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
+test("meets the accessibility and SEO baseline", async () => {
+  const response = await render();
+  const html = await response.text();
+
+  // Document language and a single top-level heading.
+  assert.match(html, /<html lang="en"/);
+  assert.equal(html.match(/<h1[\s>]/g)?.length, 1);
+
+  // Semantic landmarks: banner header with nav, one main, and a contentinfo
+  // footer that is a body-level element rather than nested inside main.
+  assert.equal(html.match(/<header[\s>]/g)?.length, 1);
+  assert.equal(html.match(/<main[\s>]/g)?.length, 1);
+  assert.equal(html.match(/<nav[\s>]/g)?.length, 1);
+  assert.equal(html.match(/<footer[\s>]/g)?.length, 1);
+  assert.ok(html.indexOf("</main>") < html.indexOf("<footer>"));
+  assert.match(html, /<nav class="nav" aria-label="Primary navigation">/);
+
+  // Skip link targets the main landmark for keyboard users.
+  assert.match(html, /<a class="skipLink" href="#content">/);
+  assert.match(html, /<main id="content">/);
+
+  // Named content sections double as region landmarks.
+  for (const label of [
+    "Isley download overview",
+    "Release details",
+    "Isley Live Network",
+    "Quick start installation",
+    "Install Doctor troubleshooting",
+    "Join the Isley Live Network",
+    "Download file integrity",
+  ]) {
+    assert.match(html, new RegExp(`aria-label="${label}"`));
+  }
+
+  // Every rendered image carries an alt attribute (decorative images use "").
+  const images = html.match(/<img\b[^>]*>/g) ?? [];
+  assert.ok(images.length > 0);
+  for (const image of images) {
+    assert.match(image, /\salt="/);
+  }
+
+  // Meta and social cards are emitted for the page.
+  assert.match(html, /<meta name="description" content="[^"]+"/);
+  assert.match(html, /<meta property="og:title" content="[^"]+"/);
+  assert.match(html, /<meta property="og:description" content="[^"]+"/);
+  assert.match(html, /<meta property="og:image" content="[^"]+"/);
+  assert.match(html, /<meta name="twitter:card" content="[^"]+"/);
+
+  // Keyboard focus stays visible and motion preferences are honored in CSS.
+  const cssUrl = new URL("../app/globals.css", import.meta.url);
+  const css = await readFile(cssUrl, "utf8");
+  assert.match(css, /a:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--cyan\)/);
+  assert.match(css, /\.skipLink:focus-visible/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
 test("ships the Isley server network operator kit", async () => {
   const kitUrl = new URL("../public/Isley-Server-Network.zip", import.meta.url);
   const kit = await readFile(kitUrl);

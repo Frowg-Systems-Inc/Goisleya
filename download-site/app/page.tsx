@@ -9,24 +9,30 @@ const SHA256 =
 
 export default function Home() {
   return (
-    <main>
-      <nav className="nav" aria-label="Primary navigation">
-        <a className="brand" href="#top" aria-label="Isley download home">
-          <img src="/isley-triceratops-teeth-clean.png" alt="" width="42" height="42" />
-          <span>ISLEY</span>
-        </a>
-        <div className="navActions">
-          <a href="#network">Live Network</a>
-          <a href="#install">Install help</a>
-          <a href="#doctor">Install Doctor</a>
-          <a href="#join">Join links</a>
-          <a href={KOFI_PATH} target="_blank" rel="noreferrer">
-            Ko-fi
+    <>
+      <a className="skipLink" href="#content">
+        Skip to main content
+      </a>
+      <header>
+        <nav className="nav" aria-label="Primary navigation">
+          <a className="brand" href="#top" aria-label="Isley download home">
+            <img src="/isley-triceratops-teeth-clean.png" alt="" width="42" height="42" />
+            <span>ISLEY</span>
           </a>
-        </div>
-      </nav>
+          <div className="navActions">
+            <a href="#network">Live Network</a>
+            <a href="#install">Install help</a>
+            <a href="#doctor">Install Doctor</a>
+            <a href="#join">Join links</a>
+            <a href={KOFI_PATH} target="_blank" rel="noreferrer">
+              Ko-fi
+            </a>
+          </div>
+        </nav>
+      </header>
 
-      <section className="hero" id="top">
+      <main id="content">
+      <section className="hero" id="top" aria-label="Isley download overview">
         <div className="heroCopy">
           <p className="eyebrow">THE ISLE COMPANION OVERLAY</p>
           <h1>Your map.<br />Your pack.<br /><span>Always in view.</span></h1>
@@ -109,7 +115,7 @@ export default function Home() {
         <div><strong>LIVE NETWORK</strong><span>Authorized bridge, Steam sign-in, newest-frame delivery</span></div>
       </section>
 
-      <section className="networkSection" id="network">
+      <section className="networkSection" id="network" aria-label="Isley Live Network">
         <div className="sectionHeading">
           <p className="eyebrow">ISLEY 1.3</p>
           <h2>A live map network Isley controls.</h2>
@@ -145,7 +151,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="installSection" id="install">
+      <section className="installSection" id="install" aria-label="Quick start installation">
         <div className="sectionHeading">
           <p className="eyebrow">QUICK START</p>
           <h2>Three steps. Then play.</h2>
@@ -181,7 +187,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="doctorSection" id="doctor">
+      <section className="doctorSection" id="doctor" aria-label="Install Doctor troubleshooting">
         <div className="sectionHeading">
           <p className="eyebrow">INSTALL DOCTOR</p>
           <h2>Fix the usual blockers fast.</h2>
@@ -237,7 +243,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="joinSection" id="join">
+      <section className="joinSection" id="join" aria-label="Join the Isley Live Network">
         <div className="sectionHeading">
           <p className="eyebrow">LIVE NETWORK JOIN</p>
           <h2>Paste a join link. Connect with Steam.</h2>
@@ -269,7 +275,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="integrity">
+      <section className="integrity" aria-label="Download file integrity">
         <div>
           <p className="eyebrow">FILE INTEGRITY</p>
           <h2>Verify your download</h2>
@@ -277,6 +283,7 @@ export default function Home() {
         <code>{SHA256}</code>
         <p>SHA-256 · Isley-Windows-x64.zip</p>
       </section>
+      </main>
 
       <footer>
         <div className="footerBrand">
@@ -299,6 +306,6 @@ export default function Home() {
           Support theoneboundinink on Ko-fi
         </a>
       </footer>
-    </main>
+    </>
   );
 }
