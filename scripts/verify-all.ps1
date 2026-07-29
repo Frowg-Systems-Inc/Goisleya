@@ -55,7 +55,8 @@ try {
         "scripts\verify-overlay-scripts.cjs",
         "scripts\verify-independent-provider.cjs",
         "scripts\verify-overlay-shell.cjs",
-        "scripts\verify-controller.cjs"
+        "scripts\verify-controller.cjs",
+        "scripts\mutation-check-contracts.cjs"
     )) {
         Invoke-NativeStep "Run $script" {
             node (Join-Path $root $script)
