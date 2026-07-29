@@ -38,6 +38,31 @@ a {
   color: inherit;
 }
 
+a:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.skipLink {
+  position: absolute;
+  left: 16px;
+  top: -56px;
+  z-index: 60;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--red);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  transition: top 150ms ease;
+}
+
+.skipLink:focus-visible {
+  top: 12px;
+}
+
 main {
   min-height: 100vh;
   overflow: hidden;
@@ -700,8 +725,16 @@ footer > a {
     scroll-behavior: auto;
   }
 
+  .skipLink,
   .downloadButton,
   .secondaryButton {
     transition: none;
+  }
+
+  .downloadButton:hover,
+  .downloadButton:focus-visible,
+  .secondaryButton:hover,
+  .secondaryButton:focus-visible {
+    transform: none;
   }
 }
