@@ -128,11 +128,118 @@ try
         "a written store round-trips through normalization");
     Check(!Directory.EnumerateFiles(storeDirectory, "*.tmp").Any(),
         "atomic writes leave no temporary files behind");
+
+    // The store remains the sole owner of the sections retired from the legacy LifeRun
+    // dual-write, so a document carrying them must round-trip losslessly.
+    var retiredSections = new PlannerStateDocument
+    {
+        Growth = new PlannerGrowthState { Percent = 63, ServerMultiplierIndex = 1, Paused = true },
+        Spawn = new PlannerSpawnState { CoverReady = true, ScentChecked = true, WaterFound = true, FoodFound = true },
+        Mutation = new PlannerMutationState
+        {
+            Loadout = [new PlannerMutationItemState { Slot = 1, MutationId = "cellular-regeneration", Status = 1 }],
+            BuildFocusIndex = 1,
+            UnlockSelectedIndex = 2,
+            UnlockProgress = [new PlannerMutationUnlockState { ChallengeId = "night-hunter", Value = 3 }]
+        }
+    };
+    Check(PlannerStateStoreLogic.TryWrite(storePath, retiredSections),
+        "a store document carrying the retired legacy sections writes atomically");
+    Check(PlannerStateStoreLogic.TryRead(storePath, out var retiredRoundTripped, out _)
+          && retiredRoundTripped is not null
+          && retiredRoundTripped.Growth.Percent == 63
+          && retiredRoundTripped.Growth.ServerMultiplierIndex == 1
+          && retiredRoundTripped.Growth.Paused
+          && retiredRoundTripped.Spawn is { CoverReady: true, ScentChecked: true, WaterFound: true, FoodFound: true }
+          && retiredRoundTripped.Mutation.Loadout.Count == 1
+          && retiredRoundTripped.Mutation.Loadout[0] is { Slot: 1, MutationId: "cellular-regeneration", Status: 1 }
+          && retiredRoundTripped.Mutation.UnlockProgress.Count == 1
+          && retiredRoundTripped.Mutation.UnlockProgress[0] is { ChallengeId: "night-hunter", Value: 3 }
+          && retiredRoundTripped.Mutation.BuildFocusIndex == MutationBuildLogic.NormalizeFocusIndex(1)
+          && retiredRoundTripped.Mutation.UnlockSelectedIndex == MutationUnlockLogic.NormalizeSelectedIndex(2),
+        "the store document still round-trips every section retired from the legacy dual-write");
 }
 finally
 {
     try { Directory.Delete(storeDirectory, recursive: true); } catch { }
 }
 
+// Legacy dual-write retirement contracts (source tokens, run from the repository root):
+// SaveSettings must no longer serialize the planner-owned LifeRun keys, RestoreLifeRun
+// must keep reading them from old files (migration safety), and the LifeRunSettings DTO
+// must keep the members so pre-store files still deserialize.
+var repositoryRoot = Directory.GetCurrentDirectory();
+var settingsSource = File.ReadAllText(Path.Combine(repositoryRoot, "BurntHud", "MainWindow.Settings.cs"));
+
+var legacyWriteStart = settingsSource.IndexOf("LifeRun = new LifeRunSettings", StringComparison.Ordinal);
+var legacyWriteEnd = settingsSource.IndexOf("LifeRunHistory = _lifeRunHistory", StringComparison.Ordinal);
+Check(legacyWriteStart >= 0 && legacyWriteEnd > legacyWriteStart,
+    "the legacy LifeRun write block is located in SaveSettings");
+var legacyWriteBlock = settingsSource[legacyWriteStart..legacyWriteEnd];
+foreach (var retiredKey in new[]
+         {
+             "NestPlanner =",
+             "MutationLoadout =",
+             "MutationBuildFocusIndex =",
+             "MutationUnlockSelectedIndex =",
+             "MutationUnlockProgress =",
+             "GrowthPercent =",
+             "GrowthServerMultiplierIndex =",
+             "GrowthPaused =",
+             "SpawnCoverReady =",
+             "SpawnScentChecked =",
+             "SpawnWaterFound =",
+             "SpawnFoodFound ="
+         })
+{
+    Check(!legacyWriteBlock.Contains(retiredKey, StringComparison.Ordinal),
+        $"the legacy LifeRun write no longer serializes the retired planner key {retiredKey}");
+}
+
+var restoreStart = settingsSource.IndexOf("private void RestoreLifeRun(LifeRunSettings? saved)", StringComparison.Ordinal);
+var restoreEnd = settingsSource.IndexOf("private void RestoreLifeRunHistory", StringComparison.Ordinal);
+Check(restoreStart >= 0 && restoreEnd > restoreStart, "RestoreLifeRun is located");
+var restoreBlock = settingsSource[restoreStart..restoreEnd];
+foreach (var migrationKey in new[]
+         {
+             "saved?.NestPlanner",
+             "saved?.MutationLoadout",
+             "saved?.MutationBuildFocusIndex",
+             "saved?.MutationUnlockSelectedIndex",
+             "saved?.MutationUnlockProgress",
+             "saved?.GrowthPercent",
+             "saved?.GrowthServerMultiplierIndex",
+             "saved?.GrowthPaused",
+             "saved?.SpawnCoverReady",
+             "saved?.SpawnScentChecked",
+             "saved?.SpawnWaterFound",
+             "saved?.SpawnFoodFound"
+         })
+{
+    Check(restoreBlock.Contains(migrationKey, StringComparison.Ordinal),
+        $"RestoreLifeRun keeps reading the legacy {migrationKey} key so old files still migrate");
+}
+
+var settingsTypesSource = File.ReadAllText(Path.Combine(repositoryRoot, "BurntHud", "MainWindow.xaml.cs"));
+foreach (var legacyMember in new[]
+         {
+             "public NestPlannerSettings NestPlanner { get; set; }",
+             "public List<MutationLoadoutSettings> MutationLoadout { get; set; }",
+             "public int MutationBuildFocusIndex { get; set; }",
+             "public int MutationUnlockSelectedIndex { get; set; }",
+             "public List<MutationUnlockProgressSettings> MutationUnlockProgress { get; set; }",
+             "public int? GrowthPercent { get; set; }",
+             "public int GrowthServerMultiplierIndex { get; set; }",
+             "public bool GrowthPaused { get; set; }",
+             "public bool SpawnCoverReady { get; set; }",
+             "public bool SpawnScentChecked { get; set; }",
+             "public bool SpawnWaterFound { get; set; }",
+             "public bool SpawnFoodFound { get; set; }"
+         })
+{
+    Check(settingsTypesSource.Contains(legacyMember, StringComparison.Ordinal),
+        $"LifeRunSettings keeps the legacy member [{legacyMember}] so old files still deserialize");
+}
+
 Console.WriteLine(
-    "Planner state store verification passed (path resolution, normalization clamps, schema gating, byte caps, and atomic round trips).");
+    "Planner state store verification passed (path resolution, normalization clamps, schema gating, byte caps, atomic round trips, retired-section round trips, and legacy dual-write retirement contracts).");
