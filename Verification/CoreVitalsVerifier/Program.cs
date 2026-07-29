@@ -282,4 +282,42 @@ Check(unsupportedText.FieldCount == 0
       && unsupportedText.Summary == "NO SUPPORTED FIELDS",
     "visible-text reader must reject unsupported numbers and out-of-range vitals");
 
+Check(VisibleHudSensorLogic.ConfidenceTier(null, 0.9, now) == SensorConfidenceTier.Unknown
+      && VisibleHudSensorLogic.ConfidenceDot(SensorConfidenceTier.Unknown).Length == 0,
+    "unknown sensor confidence must never show a dot");
+Check(VisibleHudSensorLogic.ConfidenceTier(
+          visibleHealthy with { CapturedAt = now.AddSeconds(-VisibleHudSensorLogic.FreshnessSeconds) },
+          0.9,
+          now) == SensorConfidenceTier.Unknown,
+    "stale sensor sample must drop to unknown confidence");
+Check(VisibleHudSensorLogic.ConfidenceTier(
+          visibleHealthy with { CapturedAt = now.AddSeconds(-1) },
+          0.75,
+          now) == SensorConfidenceTier.High
+      && VisibleHudSensorLogic.ConfidenceDot(SensorConfidenceTier.High) == "●",
+    "fresh calibrated high-presence sample must earn the high dot");
+Check(VisibleHudSensorLogic.ConfidenceTier(
+          visibleHealthy with { CapturedAt = now.AddSeconds(-1) },
+          0,
+          now) == SensorConfidenceTier.Medium,
+    "uncalibrated sensor must never report high confidence");
+Check(VisibleHudSensorLogic.ConfidenceTier(
+          visibleHealthy with { Confidence = 0.66, CapturedAt = now.AddSeconds(-2) },
+          0.75,
+          now) == SensorConfidenceTier.Medium
+      && VisibleHudSensorLogic.ConfidenceDot(SensorConfidenceTier.Medium) == "◐",
+    "mid-presence sample must earn the medium dot");
+Check(VisibleHudSensorLogic.ConfidenceTier(
+          visibleHealthy with { Confidence = 0.51, CapturedAt = now.AddSeconds(-1) },
+          0.75,
+          now) == SensorConfidenceTier.Low
+      && VisibleHudSensorLogic.ConfidenceDot(SensorConfidenceTier.Low) == "○"
+      && VisibleHudSensorLogic.ConfidenceLabel(SensorConfidenceTier.Low) == "low confidence",
+    "weak-presence sample must honestly show the low dot");
+Check(VisibleHudSensorLogic.ConfidenceTier(
+          visibleHealthy with { Confidence = double.NaN, CapturedAt = now.AddSeconds(-1) },
+          double.NaN,
+          now) == SensorConfidenceTier.Low,
+    "non-finite sensor signals must fall back to the lowest honest tier");
+
 Console.WriteLine("Core vitals: PASS (cycles, calibrated visible HUD estimates, allowlisted OCR, independent freshness, priority, adaptive healing evidence, full and minimized strips, privacy, and stale expiry)");

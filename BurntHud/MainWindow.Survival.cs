@@ -891,9 +891,14 @@ public partial class MainWindow
 
         var segments = new List<string>();
         var selfAvailable = _markerAvailable && _currentSelfX is not null && _currentSelfY is not null;
+        var headingConfidence = HeadingConfidenceLogic.Evaluate(
+            selfAvailable,
+            _currentSelfBearing,
+            _currentMarkerFreshnessAgeMs,
+            _staleAlertActive);
         segments.Add(selfAvailable
             ? $"YOU {(string.IsNullOrWhiteSpace(_currentGridReference) ? "LIVE" : _currentGridReference)} " +
-              ToCardinal(_currentSelfBearing)
+              $"{ToCardinal(headingConfidence.HeldDegrees)}{headingConfidence.CompactSuffix}"
             : "YOU WAITING");
         if (_lifeRunActive)
         {
@@ -1038,7 +1043,13 @@ public partial class MainWindow
             var movement = _currentSelfSpeed >= 0.15
                 ? $"{_currentSelfSpeed:0.0} MU/min"
                 : "still";
-            parts.Add($"YOU {grid} · heading {ToCardinal(_currentSelfBearing)} {_currentSelfBearing:000}° · {movement}");
+            var headingConfidence = HeadingConfidenceLogic.Evaluate(
+                selfAvailable,
+                _currentSelfBearing,
+                _currentMarkerFreshnessAgeMs,
+                _staleAlertActive);
+            parts.Add($"YOU {grid} · heading {ToCardinal(headingConfidence.HeldDegrees)} " +
+                      $"{headingConfidence.HeldDegrees:000}°{headingConfidence.Suffix} · {movement}");
         }
         else
         {
@@ -1388,6 +1399,7 @@ public partial class MainWindow
             return;
         }
 
+        EnsureTacticalLogExportButton();
         TacticalLogListPanel.Children.Clear();
         if (_streamerMode)
         {
@@ -1395,12 +1407,20 @@ public partial class MainWindow
             TacticalLogStatusText.Text = "Timeline hidden in streamer mode";
             CopyTacticalLogButton.IsEnabled = false;
             ClearTacticalLogButton.IsEnabled = false;
+            if (_tacticalLogExportButton is not null)
+            {
+                _tacticalLogExportButton.IsEnabled = false;
+            }
             return;
         }
 
         TacticalLogListPanel.Visibility = Visibility.Visible;
         CopyTacticalLogButton.IsEnabled = _tacticalEvents.Count > 0;
         ClearTacticalLogButton.IsEnabled = _tacticalEvents.Count > 0;
+        if (_tacticalLogExportButton is not null)
+        {
+            _tacticalLogExportButton.IsEnabled = _tacticalEvents.Count > 0;
+        }
         ClearTacticalLogButton.Content = _clearTacticalLogConfirmationPending
             ? "CONFIRM CLEAR"
             : "CLEAR LOG";
@@ -3452,13 +3472,15 @@ public partial class MainWindow
             label = $"Timer {_survivalTimers.Count + 1}";
         }
 
-        _survivalTimers.Add(new SurvivalTimer
+        var timer = new SurvivalTimer
         {
             Id = Guid.NewGuid().ToString("N"),
             Label = label,
             DurationSeconds = durationSeconds,
             EndsAt = DateTimeOffset.UtcNow.AddSeconds(durationSeconds)
-        });
+        };
+        _survivalTimers.Add(timer);
+        AppendTimerJournalEvent(TimerJournalLogic.StartEvent, timer);
         AddTacticalEvent("TIMER", "Timer started", $"{label} · {minutes}m");
         _clearTimersConfirmationPending = false;
         _survivalTimerUiSignature = string.Empty;
@@ -3474,6 +3496,7 @@ public partial class MainWindow
             return;
         }
 
+        ReconcileTimerJournalAfterRestore();
         var now = DateTimeOffset.UtcNow;
         var timerCompleted = false;
         foreach (var timer in _survivalTimers)
@@ -3486,6 +3509,7 @@ public partial class MainWindow
             timer.Completed = true;
             timer.PausedRemainingSeconds = 0;
             timerCompleted = true;
+            AppendTimerJournalEvent(TimerJournalLogic.ElapseEvent, timer);
             AddTacticalEvent("TIMER", "Timer complete", timer.Label, warning: true);
             if (!timer.CompletionNotified)
             {
@@ -3819,6 +3843,7 @@ public partial class MainWindow
             timer.PausedRemainingSeconds = 0;
             timer.CompletionNotified = false;
             timer.EndsAt = now.AddSeconds(timer.DurationSeconds);
+            AppendTimerJournalEvent(TimerJournalLogic.StartEvent, timer);
         }
         else if (timer.IsPaused)
         {
@@ -3841,8 +3866,9 @@ public partial class MainWindow
     private void RemoveSurvivalTimerButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string timerId }) return;
-        var removed = _survivalTimers.RemoveAll(timer => timer.Id == timerId) > 0;
-        if (!removed) return;
+        var timer = _survivalTimers.FirstOrDefault(candidate => candidate.Id == timerId);
+        if (timer is null || !_survivalTimers.Remove(timer)) return;
+        AppendTimerJournalEvent(TimerJournalLogic.CancelEvent, timer);
         _clearTimersConfirmationPending = false;
         _survivalTimerUiSignature = string.Empty;
         UpdateSurvivalTimers(force: true);
@@ -3862,6 +3888,10 @@ public partial class MainWindow
         if (_survivalTimers.Count == 0) return;
         if (_clearTimersConfirmationPending)
         {
+            foreach (var timer in _survivalTimers)
+            {
+                AppendTimerJournalEvent(TimerJournalLogic.CancelEvent, timer);
+            }
             _survivalTimers.Clear();
             _clearTimersConfirmationPending = false;
             _survivalTimerUiSignature = string.Empty;
@@ -4051,6 +4081,233 @@ public partial class MainWindow
         {
             _clearTacticalLogConfirmationPending = false;
             UpdateTacticalLog();
+        }
+    }
+
+    private Button? _tacticalLogExportButton;
+
+    private void EnsureTacticalLogExportButton()
+    {
+        if (_tacticalLogExportButton is not null
+            || CopyTacticalLogButton?.Parent is not UniformGrid grid)
+        {
+            return;
+        }
+
+        grid.Columns = 3;
+        _tacticalLogExportButton = new Button
+        {
+            Style = (Style)FindResource("DrawerCompactButton"),
+            ToolTip = "Save this session's tactical timeline to a text or JSON file you choose",
+            Content = "EXPORT",
+            IsEnabled = false
+        };
+        _tacticalLogExportButton.Click += ExportTacticalLogButton_Click;
+        grid.Children.Add(_tacticalLogExportButton);
+    }
+
+    private async void ExportTacticalLogButton_Click(object sender, RoutedEventArgs e) =>
+        await ExportTacticalLogAsync();
+
+    private async Task ExportTacticalLogAsync()
+    {
+        if (_streamerMode || _tacticalEvents.Count == 0)
+        {
+            await ShowHotkeyToastAsync("TACTICAL LOG UNAVAILABLE", false);
+            return;
+        }
+
+        var events = _tacticalEvents
+            .Select(entry => new TacticalLogExportEvent(
+                entry.OccurredAt,
+                entry.Category,
+                entry.Title,
+                entry.Detail,
+                entry.Warning))
+            .ToList();
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export Isley tactical log",
+            Filter = "Text log (*.txt)|*.txt|JSON (*.json)|*.json",
+            FileName = TacticalLogExportLogic.SuggestedFileName(DateTimeOffset.Now, json: false),
+            DefaultExt = ".txt",
+            AddExtension = true,
+            OverwritePrompt = true
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var asJson = dialog.FilterIndex == 2
+                     || string.Equals(
+                         Path.GetExtension(dialog.FileName),
+                         ".json",
+                         StringComparison.OrdinalIgnoreCase);
+        var result = asJson
+            ? TacticalLogExportLogic.BuildJson(events, DateTimeOffset.Now)
+            : TacticalLogExportLogic.BuildPlainText(events, DateTimeOffset.Now);
+        string? temporaryPath = null;
+        try
+        {
+            var directory = Path.GetDirectoryName(dialog.FileName);
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                throw new IOException("No export directory was selected");
+            }
+
+            temporaryPath = Path.Combine(
+                directory,
+                $".{Path.GetFileName(dialog.FileName)}.{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(temporaryPath, result.Content);
+            File.Move(temporaryPath, dialog.FileName, overwrite: true);
+            temporaryPath = null;
+            if (_tacticalLogExportButton is not null)
+            {
+                _tacticalLogExportButton.Content = "EXPORTED";
+            }
+            await ShowHotkeyToastAsync(
+                $"TACTICAL LOG EXPORTED · {result.ExportedEventCount} EVENTS",
+                true);
+        }
+        catch (Exception ex) when (ex is IOException
+                                   or UnauthorizedAccessException
+                                   or System.Security.SecurityException
+                                   or NotSupportedException)
+        {
+            if (_tacticalLogExportButton is not null)
+            {
+                _tacticalLogExportButton.Content = "FAILED";
+            }
+            await ShowHotkeyToastAsync("TACTICAL LOG EXPORT FAILED", false);
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(temporaryPath))
+            {
+                try { File.Delete(temporaryPath); } catch { }
+            }
+        }
+
+        await Task.Delay(1400);
+        if (IsLoaded && _tacticalLogExportButton is not null)
+        {
+            _tacticalLogExportButton.Content = "EXPORT";
+        }
+    }
+
+    private readonly List<TimerJournalEntry> _timerJournal = [];
+    private readonly HashSet<string> _timerJournalExpiredAwayFlagged = new(StringComparer.Ordinal);
+    private bool _timerJournalLoaded;
+
+    private static string TimerJournalPath
+    {
+        get
+        {
+            var directory = Path.GetDirectoryName(PrimarySettingsPath);
+            return Path.Combine(
+                string.IsNullOrWhiteSpace(directory) ? AppContext.BaseDirectory : directory,
+                "timer-journal.json");
+        }
+    }
+
+    private void EnsureTimerJournalLoaded()
+    {
+        if (_timerJournalLoaded)
+        {
+            return;
+        }
+
+        _timerJournalLoaded = true;
+        try
+        {
+            var path = TimerJournalPath;
+            if (File.Exists(path)
+                && TimerJournalLogic.TryDeserialize(File.ReadAllText(path), out var entries))
+            {
+                _timerJournal.AddRange(entries);
+            }
+        }
+        catch
+        {
+            // The journal is advisory; a corrupt or locked file never blocks launch.
+        }
+    }
+
+    private void AppendTimerJournalEvent(string eventKind, SurvivalTimer timer)
+    {
+        EnsureTimerJournalLoaded();
+        _timerJournal.Add(TimerJournalLogic.Create(
+            eventKind,
+            DateTimeOffset.UtcNow,
+            timer.Id,
+            timer.Label,
+            timer.DurationSeconds));
+        SaveTimerJournal();
+    }
+
+    private void SaveTimerJournal()
+    {
+        string? temporaryPath = null;
+        try
+        {
+            var pruned = TimerJournalLogic.Prune(_timerJournal);
+            _timerJournal.Clear();
+            _timerJournal.AddRange(pruned);
+            var serialized = TimerJournalLogic.Serialize(pruned);
+            var path = TimerJournalPath;
+            var directory = Path.GetDirectoryName(path);
+            if (string.IsNullOrWhiteSpace(directory))
+            {
+                return;
+            }
+
+            Directory.CreateDirectory(directory);
+            temporaryPath = Path.Combine(directory, $".timer-journal.{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(temporaryPath, serialized);
+            File.Move(temporaryPath, path, overwrite: true);
+            temporaryPath = null;
+        }
+        catch
+        {
+            // Best-effort journal; a failed write never interrupts timer flow.
+            if (!string.IsNullOrWhiteSpace(temporaryPath))
+            {
+                try { File.Delete(temporaryPath); } catch { }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Surfaces restored timers that elapsed while Isley was closed. They already
+    /// restore as silently completed (never re-firing an alarm); this only adds the
+    /// honest "expired while away" timeline entry once per timer per expiry, and only
+    /// when the journal tracked that timer's start.
+    /// </summary>
+    private void ReconcileTimerJournalAfterRestore()
+    {
+        EnsureTimerJournalLoaded();
+        var expiredIds = TimerJournalLogic.FindExpiredWhileAway(
+            _timerJournal,
+            _survivalTimers
+                .Where(timer => timer.Completed)
+                .Select(timer => timer.Id));
+        foreach (var timer in _survivalTimers)
+        {
+            var normalizedId = TimerJournalLogic.NormalizeTimerId(timer.Id);
+            if (normalizedId.Length == 0
+                || !expiredIds.Contains(normalizedId, StringComparer.Ordinal)
+                || !_timerJournalExpiredAwayFlagged.Add(normalizedId))
+            {
+                continue;
+            }
+
+            AppendTimerJournalEvent(TimerJournalLogic.ExpiredAwayEvent, timer);
+            AddTacticalEvent(
+                "TIMER",
+                "Timer expired while away",
+                $"{timer.Label} · ended {timer.EndsAt.ToLocalTime():MMM d HH:mm} · no alarm while Isley was closed",
+                warning: true);
         }
     }
 }

@@ -9,6 +9,14 @@ internal readonly record struct VisibleHudSensorSample(
     double Confidence,
     bool DamageVisualDetected);
 
+internal enum SensorConfidenceTier
+{
+    Unknown,
+    Low,
+    Medium,
+    High
+}
+
 internal readonly record struct VisibleHudCalibration(
     double Scale,
     double OffsetX,
@@ -28,6 +36,50 @@ internal static class VisibleHudSensorLogic
         var age = (now - sample.CapturedAt).TotalSeconds;
         return age >= 0 && age < FreshnessSeconds;
     }
+
+    /// <summary>
+    /// Grades how much trust a visible-HUD estimate deserves from the signals the
+    /// sensor already produces: the sample's own presence confidence, its age, and
+    /// the calibration alignment score. Unknown (no fresh sample) yields no dot —
+    /// Isley never shows a fake "high".
+    /// </summary>
+    internal static SensorConfidenceTier ConfidenceTier(
+        VisibleHudSensorSample? sample,
+        double calibrationScore,
+        DateTimeOffset now)
+    {
+        if (sample is not { } value || !IsFresh(value, now))
+        {
+            return SensorConfidenceTier.Unknown;
+        }
+
+        var ageSeconds = Math.Max(0, (now - value.CapturedAt).TotalSeconds);
+        var confidence = double.IsFinite(value.Confidence) ? value.Confidence : 0;
+        var alignment = double.IsFinite(calibrationScore) ? calibrationScore : 0;
+        return confidence >= 0.78 && ageSeconds < 1.5 && alignment >= 0.45
+            ? SensorConfidenceTier.High
+            : confidence >= 0.62
+                ? SensorConfidenceTier.Medium
+                : SensorConfidenceTier.Low;
+    }
+
+    internal static string ConfidenceDot(SensorConfidenceTier tier) =>
+        tier switch
+        {
+            SensorConfidenceTier.High => "●",
+            SensorConfidenceTier.Medium => "◐",
+            SensorConfidenceTier.Low => "○",
+            _ => string.Empty
+        };
+
+    internal static string ConfidenceLabel(SensorConfidenceTier tier) =>
+        tier switch
+        {
+            SensorConfidenceTier.High => "high confidence",
+            SensorConfidenceTier.Medium => "medium confidence",
+            SensorConfidenceTier.Low => "low confidence",
+            _ => "unknown confidence"
+        };
 
     internal static VisibleHudCalibration NormalizeCalibration(VisibleHudCalibration calibration) =>
         new(
