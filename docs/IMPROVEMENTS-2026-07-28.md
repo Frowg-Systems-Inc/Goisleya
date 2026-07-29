@@ -140,3 +140,22 @@ green at catalog 124.
 - Optional palette entry for tactical-log-export (+1 ledger).
 - Heading decay on the map compass + position-copy surfaces.
 - Wave 3 (#10–#11): Dependabot/CodeQL/secret scanning; updater delta/beta/boot-ok.
+
+## 8. Wave 3 — security & release (#20–#21) — plan complete
+
+- **Supply chain (#20):** Dependabot weekly for NuGet/npm×2/GitHub Actions;
+  CodeQL (C# manual build on windows-latest + JavaScript) on push/PR + weekly;
+  GitHub secret scanning **and push protection** enabled repo-wide.
+- **Updater (#21):** post-update boot-ok marker (result stays pending until a
+  healthy boot confirms; honest NOT CONFIRMED surface); real beta channel
+  (second pinned manifest/URL pair, channel-equality enforced, stable
+  fallback with honest copy); delta downloads v1 (optional manifest block,
+  exact-base-match, same hash/size/zip-slip posture, delete list inside the
+  verified zip and re-validated client- and updater-side, full-package
+  fallback, rollback intact). Root of trust unchanged — no trust widening.
+  Design doc: docs/ISLEY_UPDATER_DELTA.md.
+
+Final state: catalog 124 · 61 verifiers · CI 3 jobs + CodeQL · issues #2–#11
+all closed · all 21 PRs merged. Remaining follow-ups are listed in section 7
+(verifier additions for Wave 2 logic files, legacy key retirement, optional
+palette entry, heading decay on compass) — none blocking.
