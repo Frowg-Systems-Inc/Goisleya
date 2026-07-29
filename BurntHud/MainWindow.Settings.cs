@@ -765,6 +765,11 @@ public partial class MainWindow
             PressureCoachPreStreamSeen = _pressureCoachPreStreamSeen,
             WhatsNewVersionSeen = _whatsNewVersionSeen,
             PreferBetaUpdates = _preferBetaUpdates,
+            // Planner-owned state (growth percent/multiplier/pause, the spawn checklist, the
+            // nest planner, and the mutation loadout/focus/unlock progress) is intentionally
+            // NOT dual-written here anymore: it lives only in the schema-versioned
+            // planner-state.json store. RestoreLifeRun keeps reading these legacy keys from
+            // old files forever so pre-store installs still migrate on first launch.
             LifeRun = new LifeRunSettings
             {
                 Active = _lifeRunActive,
@@ -775,10 +780,6 @@ public partial class MainWindow
                 PerfectDiet = _lifeRunPerfectDiet,
                 NestedIn = _lifeRunNestedIn,
                 RaisedYoung = _lifeRunRaisedYoung,
-                SpawnCoverReady = _spawnPlanCoverReady,
-                SpawnScentChecked = _spawnPlanScentChecked,
-                SpawnWaterFound = _spawnPlanWaterFound,
-                SpawnFoodFound = _spawnPlanFoodFound,
                 CurrentZoneIndex = _zoneBriefIndex,
                 MigrationVisits = _lifeRunMigrationVisits,
                 PatrolVisits = _lifeRunPatrolVisits,
@@ -791,41 +792,9 @@ public partial class MainWindow
                 DietSlot1 = _dietSlot1,
                 DietSlot2 = _dietSlot2,
                 DietSlot3 = _dietSlot3,
-                GrowthPercent = _lifeRunGrowthPercent,
-                GrowthServerMultiplierIndex = _growthServerMultiplierIndex,
-                GrowthPaused = _growthPaused,
                 ElderEntombCount = _elderEntombCount,
                 ElderPrimeConfirmed = _elderPrimeConfirmed,
-                ElderConfirmed = _elderConfirmed,
-                NestPlanner = new NestPlannerSettings
-                {
-                    Active = _nestPlannerActive,
-                    PhaseIndex = _nestPhaseIndex,
-                    PartnerReady = _nestPartnerReady,
-                    SiteReady = _nestSiteReady,
-                    DebrisReady = _nestDebrisReady,
-                    ReservesReady = _nestReservesReady,
-                    AccessIndex = _nestAccessIndex,
-                    EggTarget = _nestEggTarget,
-                    EggsLaid = _nestEggsLaid,
-                    EggsHatched = _nestEggsHatched,
-                    YoungRaised = _nestYoungRaised,
-                    TimerDurationIndex = _nestTimerDurationIndex,
-                    AutoHatchGuidanceEnabled = _nestAutoHatchGuidanceEnabled
-                },
-                MutationLoadout = _mutationLoadout.Select(item => new MutationLoadoutSettings
-                {
-                    Slot = item.Slot,
-                    MutationId = item.MutationId,
-                    Status = item.Status
-                }).ToList(),
-                MutationBuildFocusIndex = _mutationBuildFocusIndex,
-                MutationUnlockSelectedIndex = _mutationUnlockSelectedIndex,
-                MutationUnlockProgress = _mutationUnlockProgress.Select(item => new MutationUnlockProgressSettings
-                {
-                    ChallengeId = item.ChallengeId,
-                    Value = item.Value
-                }).ToList()
+                ElderConfirmed = _elderConfirmed
             },
             LifeRunHistory = _lifeRunHistory.Select(entry => new LifeRunHistoryEntry
             {

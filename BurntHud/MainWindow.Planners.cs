@@ -3845,9 +3845,10 @@ public partial class MainWindow
     private string _selectedRatePresetId = string.Empty;
     private readonly List<ServerRatePreset> _customRatePresets = [];
 
-    // Every planner-state write in this partial goes through here so the legacy
-    // per-planner settings keys (still written by SaveSettings for one version) and the
-    // unified schema-versioned planner-state store stay in step.
+    // Every planner-state write in this partial goes through here. The unified
+    // schema-versioned planner-state store is the only writer of planner keys
+    // (legacy dual-write retired after one shipped version; RestoreLifeRun
+    // still reads old files for migration).
     private void SavePlannerState()
     {
         SaveSettings();
