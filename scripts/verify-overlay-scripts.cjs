@@ -69,6 +69,28 @@ if (!sealedDerivationGuard.test(voice)) {
     "voice.js is missing the room-key derivation failure path that fails closed with ROOM ENCRYPTION UNAVAILABLE.");
 }
 
+// Glare-free offer ordering guards TWO call sites (the welcome roster and the
+// peer-joined branch). The exact occurrence count is pinned and each site is
+// asserted structurally, so inverting one site cannot hide behind the
+// duplicated literal in the other.
+const glareOrderingNeedle = "localPeerId.localeCompare(remoteId) < 0";
+if (voice.split(glareOrderingNeedle).length - 1 !== 2) {
+  throw new Error(
+    "voice.js must carry the glare-free offer ordering guard at exactly two call sites.");
+}
+const glareWelcomeGuard =
+  /for \(const remote of payload\.peers \|\| \[\]\) \{\s*const remoteId = rememberPeerIdentity\(remote\.id, 'Isley Player'\);\s*if \(remoteId\) signalingPeers\.add\(remoteId\);\s*if \(remoteId && localPeerId\.localeCompare\(remoteId\) < 0\) await offerPeer\(remoteId\);/;
+if (!glareWelcomeGuard.test(voice)) {
+  throw new Error(
+    "voice.js is missing the glare-free offer ordering guard in the welcome-roster branch.");
+}
+const glarePeerJoinedGuard =
+  /if \(message\.type === 'peer-joined'\) \{\s*const remoteId = rememberPeerIdentity\(from, 'Isley Player'\);\s*if \(remoteId\) signalingPeers\.add\(remoteId\);\s*if \(remoteId && localPeerId\.localeCompare\(remoteId\) < 0\) await offerPeer\(remoteId\);/;
+if (!glarePeerJoinedGuard.test(voice)) {
+  throw new Error(
+    "voice.js is missing the glare-free offer ordering guard in the peer-joined branch.");
+}
+
 const requiredVoiceCryptoContracts = [
   ["AES-GCM sealing", "AES-GCM"],
   ["seal API", "sealSignal"],

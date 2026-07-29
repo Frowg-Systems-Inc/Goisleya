@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>PlannerStateStoreVerifier</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\DietCoachLogic.cs" Link="DietCoachLogic.cs" />
+    <Compile Include="..\..\BurntHud\GrowthPlannerLogic.cs" Link="GrowthPlannerLogic.cs" />
+    <Compile Include="..\..\BurntHud\LifeRunLogic.cs" Link="LifeRunLogic.cs" />
+    <Compile Include="..\..\BurntHud\MutationBuildLogic.cs" Link="MutationBuildLogic.cs" />
+    <Compile Include="..\..\BurntHud\MutationPlannerLogic.cs" Link="MutationPlannerLogic.cs" />
+    <Compile Include="..\..\BurntHud\MutationUnlockLogic.cs" Link="MutationUnlockLogic.cs" />
+    <Compile Include="..\..\BurntHud\NestPlannerLogic.cs" Link="NestPlannerLogic.cs" />
+    <Compile Include="..\..\BurntHud\NestTimerAlertLogic.cs" Link="NestTimerAlertLogic.cs" />
+    <Compile Include="..\..\BurntHud\ServerRatePresetLogic.cs" Link="ServerRatePresetLogic.cs" />
+    <Compile Include="..\..\BurntHud\PlannerStateStoreLogic.cs" Link="PlannerStateStoreLogic.cs" />
+  </ItemGroup>
+</Project>

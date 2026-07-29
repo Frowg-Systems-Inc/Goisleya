@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>ServerRatePresetVerifier</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\BurntHud\DietCoachLogic.cs" Link="DietCoachLogic.cs" />
+    <Compile Include="..\..\BurntHud\GrowthPlannerLogic.cs" Link="GrowthPlannerLogic.cs" />
+    <Compile Include="..\..\BurntHud\ServerRatePresetLogic.cs" Link="ServerRatePresetLogic.cs" />
+  </ItemGroup>
+</Project>

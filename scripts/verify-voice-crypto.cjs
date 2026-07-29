@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const nodeCrypto = require('node:crypto');
 const path = require('node:path');
 
 const cryptoModulePath = path.join(
@@ -8,6 +10,20 @@ const cryptoModulePath = path.join(
   'Voice',
   'voice-crypto.js');
 const voiceCrypto = require(cryptoModulePath);
+const cryptoSource = fs.readFileSync(cryptoModulePath, 'utf8').replace(/\r\n?/g, '\n');
+
+// Fixed contract pins: the room-key KDF domain-separation prefix and the
+// AES-GCM authentication tag length are cross-party compatibility contracts.
+// A self-consistent rekey or tag shortening would still round trip, so they
+// must be asserted literally AND behaviorally, not just by round trips.
+assert.equal(
+  cryptoSource.split('isley-voice-signal-key-v1:').length - 1,
+  1,
+  'room-key KDF must use exactly the isley-voice-signal-key-v1: domain prefix');
+assert.equal(
+  cryptoSource.split('tagLength: 128').length - 1,
+  2,
+  'AES-GCM must seal and open with a 128-bit authentication tag at both sites');
 
 async function rejects(action, message) {
   let rejected = false;
@@ -45,6 +61,39 @@ async function main() {
   await rejects(
     () => voiceCrypto.openSignal(otherKey, first),
     'another room key decrypted the signaling envelope');
+
+  // Behavioral pin of the KDF domain prefix: a key derived independently as
+  // SHA-256('isley-voice-signal-key-v1:' + normalized secret) must be
+  // interchangeable with the module's derived key in both directions.
+  const independentDigest = nodeCrypto.createHash('sha256')
+    .update(`isley-voice-signal-key-v1:${roomSecret}`)
+    .digest();
+  const independentKey = await nodeCrypto.webcrypto.subtle.importKey(
+    'raw',
+    independentDigest,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']);
+  assert.deepEqual(
+    await voiceCrypto.openSignal(independentKey, first),
+    offer,
+    'room-key KDF drifted from the pinned isley-voice-signal-key-v1: domain');
+  assert.deepEqual(
+    await voiceCrypto.openSignal(key, await voiceCrypto.sealSignal(independentKey, offer)),
+    offer,
+    'independently derived room key could not seal for this module');
+
+  // Behavioral pin of the 128-bit tag: an AES-GCM ciphertext is exactly
+  // plaintext + 16 bytes (128-bit tag); a shortened tag would shrink it.
+  const offerPlaintextBytes = new TextEncoder().encode(
+    JSON.stringify(voiceCrypto.normalizeSignalPayload(offer)));
+  const sealedBytes = Buffer.from(
+    first.ciphertext.replace(/-/g, '+').replace(/_/g, '/'),
+    'base64');
+  assert.equal(
+    sealedBytes.length,
+    offerPlaintextBytes.length + 16,
+    'AES-GCM authentication tag is no longer 128 bits');
 
   const tampered = {
     ...first,
@@ -87,8 +136,9 @@ async function main() {
     'oversized ICE candidate accepted');
 
   console.log(
-    'Voice crypto: PASS (room-key derivation, AES-GCM sealing, random IVs, '
-    + 'tamper/wrong-key refusal, bounded SDP/ICE, and plaintext-address privacy)');
+    'Voice crypto: PASS (pinned KDF domain and 128-bit tag, room-key derivation, '
+    + 'AES-GCM sealing, random IVs, tamper/wrong-key refusal, bounded SDP/ICE, '
+    + 'and plaintext-address privacy)');
 }
 
 main().catch(error => {

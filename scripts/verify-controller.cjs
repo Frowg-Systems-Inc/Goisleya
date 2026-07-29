@@ -433,7 +433,7 @@ const requiredContracts = [
   ['server-authorized escape route API', 'startEscapeRoute() {'],
   ['Danger-zone hard obstacles', "pin.type === 'danger' && Number(pin.alertRadius) > 0"],
   ['persistent no-go area store', "isley-no-go-areas-v1"],
-  ['bounded polygon tracing', 'noGoAreaMaximumVertices = 12'],
+  ['bounded polygon tracing', 'noGoAreaMaximumVertices = 12;'],
   ['self-crossing boundary refusal', 'routePolygonSelfIntersects'],
   ['polygon course obstacle bridge', "kind: 'polygon'"],
   ['padded polygon route blocking', 'routeSegmentIntersectsPolygon'],
@@ -555,6 +555,14 @@ for (const [label, contract] of requiredContracts) {
   if (!body.includes(contract)) {
     throw new Error(`Embedded map controller is missing ${label}: ${contract}`);
   }
+}
+
+// The no-go polygon vertex cap is asserted with a numeric boundary so a
+// mutant such as `= 120` cannot satisfy the contract by prefix match.
+const noGoVertexCapDeclaration = /\bnoGoAreaMaximumVertices = 12(?!\d)/;
+if (!noGoVertexCapDeclaration.test(body)) {
+  throw new Error(
+    'Embedded map controller is missing bounded polygon tracing: noGoAreaMaximumVertices = 12 (numeric boundary)');
 }
 
 const requiredDocumentStartContracts = [
