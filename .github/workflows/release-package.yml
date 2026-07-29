@@ -8,6 +8,29 @@ on:
         required: false
         default: >-
           Automatic update notifications and verified one-click installation.
+      version_bump:
+        description: Semver bump from the live manifest version (ignored when version_override is set)
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - keep
+        default: patch
+        required: true
+      version_override:
+        description: Explicit release version X.Y.Z (wins over version_bump)
+        type: string
+        required: false
+        default: ""
+      channel:
+        description: stable updates Isley-release.json; beta updates Isley-release-beta.json and ships a prerelease
+        type: choice
+        options:
+          - stable
+          - beta
+        default: stable
+        required: true
 
 permissions:
   contents: write
@@ -20,6 +43,8 @@ jobs:
   package:
     runs-on: windows-latest
     timeout-minutes: 60
+    outputs:
+      version: ${{ steps.package.outputs.version }}
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
@@ -40,6 +65,7 @@ jobs:
           cache-dependency-path: download-site/package-lock.json
 
       - name: Package Windows archives
+        id: package
         shell: pwsh
         env:
           # Optional Authenticode inputs (set repository secrets to sign releases):
@@ -50,14 +76,95 @@ jobs:
           ISLEY_CODE_SIGN_PASSWORD: ${{ secrets.ISLEY_CODE_SIGN_PASSWORD }}
           ISLEY_CODE_SIGN_THUMBPRINT: ${{ secrets.ISLEY_CODE_SIGN_THUMBPRINT }}
           ISLEY_CODE_SIGN_TIMESTAMP_URL: ${{ secrets.ISLEY_CODE_SIGN_TIMESTAMP_URL }}
-        run: .\scripts\package-isley-1.3.ps1
+          # gh CLI authentication for the previous-release (delta base) download.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISLEY_VERSION_BUMP: ${{ inputs.version_bump }}
+          ISLEY_VERSION_OVERRIDE: ${{ inputs.version_override }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # --- Resolve the release version from the live manifest + bump inputs ---
+          $manifest = Get-Content -LiteralPath "download-site\public\Isley-release.json" -Raw | ConvertFrom-Json
+          $currentText = [string]$manifest.version
+          if ($currentText -notmatch '^(?<major>\d{1,4})\.(?<minor>\d{1,4})\.(?<patch>\d{1,6})$') {
+              throw "download-site/public/Isley-release.json declares an unreadable version '$currentText'."
+          }
+          $major = [int]$Matches['major']
+          $minor = [int]$Matches['minor']
+          $patch = [int]$Matches['patch']
+          $override = "$env:ISLEY_VERSION_OVERRIDE".Trim()
+          $bump = "$env:ISLEY_VERSION_BUMP".Trim().ToLowerInvariant()
+          if (-not [string]::IsNullOrWhiteSpace($override)) {
+              if ($override -notmatch '^\d{1,4}\.\d{1,4}\.\d{1,6}$') {
+                  throw "version_override must be a three-part version (X.Y.Z); got '$override'."
+              }
+              $newVersion = $override
+          }
+          else {
+              switch ($bump) {
+                  "patch" { $newVersion = "{0}.{1}.{2}" -f $major, $minor, ($patch + 1) }
+                  "minor" { $newVersion = "{0}.{1}.{2}" -f $major, ($minor + 1), 0 }
+                  "major" { $newVersion = "{0}.{1}.{2}" -f ($major + 1), 0, 0 }
+                  "keep"  { $newVersion = $currentText }
+                  default { throw "version_bump must be patch, minor, major, or keep; got '$bump'." }
+              }
+          }
+          if ([Version]$newVersion -lt [Version]$currentText) {
+              throw "Refusing to release $newVersion, which is older than the live $currentText."
+          }
+          Write-Host "Release version: $currentText -> $newVersion (bump=$bump, override='$override')"
+          "version=$newVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          # --- Delta base: previous client archive from the latest GitHub Release ---
+          # Downloaded into artifacts/, the folder package-isley-1.3.ps1 already
+          # auto-scans for a previous Isley-Windows-x64-*.zip. A clean miss
+          # (no releases yet, or the asset is absent) means "no delta this run".
+          New-Item -ItemType Directory -Path "artifacts" -Force | Out-Null
+          & gh release download --repo ${{ github.repository }} `
+              --pattern "Isley-Windows-x64-*.zip" --dir artifacts --clobber
+          if ($LASTEXITCODE -ne 0) {
+              Write-Host ("No prior GitHub Release client archive could be downloaded " +
+                  "(first release or missing asset); skipping the delta package for this run.")
+          }
+
+          # --- Package (+ optional Authenticode signing, unchanged) ---
+          & .\scripts\package-isley-1.3.ps1 -Version $newVersion
+
+          # Keep the uploaded bundle limited to this run's own archives.
+          Get-ChildItem -LiteralPath "artifacts" -Filter "Isley-Windows-x64-*.zip" -File |
+              Where-Object { $_.Name -ne "Isley-Windows-x64-$newVersion.zip" } |
+              Remove-Item -Force
 
       - name: Stage download site release
         shell: pwsh
+        env:
+          # Notes travel via the environment, not through npm argument
+          # forwarding: npm strips the surrounding quotes on Windows and the
+          # cmd hop mangles non-ASCII text, which silently truncated (or
+          # killed) the notes on their way to Isley-release.json.
+          ISLEY_RELEASE_NOTES: ${{ inputs.release_notes }}
+          ISLEY_RELEASE_VERSION: ${{ steps.package.outputs.version }}
+          ISLEY_CHANNEL: ${{ inputs.channel }}
         run: |
+          $ErrorActionPreference = "Stop"
           Set-Location download-site
           npm ci
-          npm run release:update -- -ReleaseNotes "${{ inputs.release_notes }}"
+          Set-Location ..
+          $updateParameters = @{
+              ArchivePath = "artifacts\Isley-Windows-x64-$env:ISLEY_RELEASE_VERSION.zip"
+              ServerArchivePath = "artifacts\Isley-Server-Network-$env:ISLEY_RELEASE_VERSION.zip"
+              Version = $env:ISLEY_RELEASE_VERSION
+              ReleaseNotes = $env:ISLEY_RELEASE_NOTES
+              Channel = $env:ISLEY_CHANNEL
+          }
+          $delta = Get-ChildItem -LiteralPath "artifacts" `
+              -Filter "Isley-delta-*-$env:ISLEY_RELEASE_VERSION.zip" -File |
+              Select-Object -First 1
+          if ($null -ne $delta) {
+              $updateParameters["DeltaArchivePath"] = $delta.FullName
+          }
+          & .\download-site\scripts\update-isley-download.ps1 @updateParameters
+          Set-Location download-site
           npm test
 
       - name: Upload release archives
@@ -67,7 +174,73 @@ jobs:
           path: |
             artifacts/Isley-Windows-x64-*.zip
             artifacts/Isley-Server-Network-*.zip
+            artifacts/Isley-delta-*.zip
+            artifacts/SHA256SUMS.txt
             download-site/public/Isley-Windows-x64.zip
+            download-site/public/Isley-Windows-x64-beta.zip
             download-site/public/Isley-Server-Network.zip
+            download-site/public/Isley-delta-*.zip
             download-site/public/Isley-release.json
+            download-site/public/Isley-release-beta.json
           if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    # The workflow has no push trigger, so this job can only ever run from a
+    # manual dispatch; the guard keeps that contract explicit.
+    if: github.event_name == 'workflow_dispatch'
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release package
+        uses: actions/download-artifact@v4
+        with:
+          name: isley-release-package
+          path: release-package
+
+      - name: Verify archive hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-package/artifacts
+          sha256sum --check SHA256SUMS.txt
+
+      - name: Compose release body and file list
+        id: compose
+        shell: bash
+        env:
+          ISLEY_RELEASE_NOTES: ${{ inputs.release_notes }}
+          ISLEY_RELEASE_VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd release-package/artifacts
+          {
+            printf '%s\n' "${ISLEY_RELEASE_NOTES:-Isley $ISLEY_RELEASE_VERSION is ready.}"
+            printf '\n| Artifact | Size (bytes) | SHA-256 |\n| --- | ---: | --- |\n'
+            while read -r hash file; do
+              name="${file#\*}"
+              size="$(stat -c %s "$name")"
+              printf '| `%s` | %s | `%s` |\n' "$name" "$size" "$hash"
+            done < SHA256SUMS.txt
+          } > ../RELEASE_BODY.md
+          # Attach paths are resolved by the action relative to the workspace
+          # root; the delta glob itself runs here inside the artifacts folder.
+          files="release-package/artifacts/Isley-Windows-x64-${ISLEY_RELEASE_VERSION}.zip"
+          files="${files}"$'\n'"release-package/artifacts/Isley-Server-Network-${ISLEY_RELEASE_VERSION}.zip"
+          files="${files}"$'\n'"release-package/artifacts/SHA256SUMS.txt"
+          for delta in Isley-delta-*-"${ISLEY_RELEASE_VERSION}".zip; do
+            [ -e "$delta" ] || continue
+            files="${files}"$'\n'"release-package/artifacts/${delta}"
+          done
+          printf 'files<<EOF\n%s\nEOF\n' "$files" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.package.outputs.version }}${{ inputs.channel == 'beta' && '-beta' || '' }}
+          name: Isley v${{ needs.package.outputs.version }}${{ inputs.channel == 'beta' && ' (beta)' || '' }}
+          body_path: release-package/RELEASE_BODY.md
+          prerelease: ${{ inputs.channel == 'beta' }}
+          make_latest: ${{ inputs.channel == 'beta' && 'false' || 'true' }}
+          fail_on_unmatched_files: true
+          files: ${{ steps.compose.outputs.files }}
