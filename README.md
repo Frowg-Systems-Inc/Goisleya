@@ -37,6 +37,10 @@ logic files compiles under a focused verifier (84/84), 71 verifiers run in
 the solution, and the mutation harness proves 13/13 deliberate contract
 sabotages are caught with zero false passes.
 
+See [CHANGELOG.md](CHANGELOG.md) for the full release history, and the
+[GitHub Releases page](https://github.com/Frowg-Systems-Inc/Goisleya/releases)
+for verified downloads and SHA-256 checksums.
+
 ## Live Map
 
 The Live Map application shell runs from `BurntHud/Map/index.html`, which is
