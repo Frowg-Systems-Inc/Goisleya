@@ -71,7 +71,7 @@ internal static class VoicePeerQualityLogic
                 && !quality.JitterMilliseconds.HasValue
                 && !quality.PacketLossPercent.HasValue))
         {
-            return "No WebRTC sample for this peer yet; audio is unaffected";
+            return "No WebRTC sample yet — appears after peers talk while the monitor is on; audio is unaffected";
         }
 
         var metrics = new List<string>(3);
