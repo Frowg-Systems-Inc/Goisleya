@@ -43,3 +43,38 @@ WPF overlay). About 15 minutes.
     entering the alert radius), run *Copy encounter history* → clipboard has
     both timestamped entries; run it in a fresh session → "NO ENCOUNTERS
     RECORDED THIS SESSION".
+
+## Results — 2026-07-29 live session (v1.4.0)
+
+Ran on Windows against the packaged v1.4.0 portable build. Items checked
+below are marked; anything not listed as checked remains unverified on this
+build.
+
+- [x] **Launch + Live Map render** — the map renders against the public feed
+  and the status pill reads `GAME LIVE` (with the session-minute counter)
+  once The Isle is running.
+- [x] **Palette keystroke** — `Ctrl+Shift+P` opens Quick Commands (the fuzzy
+  matches in item 2 were not re-checked this session).
+- [x] **Live map diff (item 7, partial)** — a live-feed diff measured 2,144
+  changed pixels over 45 s, consistent with continuous interpolation rather
+  than a frozen view.
+- [x] **Voice bundled-host auto-relaunch (item 3)** — killing the bundled
+  `Isley.VoiceServer` process was followed by an automatic host relaunch and
+  voice-session recovery (reconnect backoff timing not separately measured).
+- [x] **Planner-state persistence** — `planner-state.json` under the portable
+  `IsleyData` directory is written live as planner state changes.
+- [x] **Updater exe drill 4/4** — full/orphan sweep, delta delete-list,
+  traversal refusal, and source==target refusal all pass.
+- [x] **VoiceServer live test 4/4** — `tests/test_voice_server_live.py` passes
+  on the real Windows host.
+
+Still unchecked (interactive items needing live gameplay or extra hardware):
+
+- [ ] In-game marker glide smoothness and reduced-motion snap (item 7) with
+  real movement.
+- [ ] Route auto-replan on actual in-game deviation, including its toasts.
+- [ ] Toast surfaces in play: nest timer alerts, Lite Mode suggestion, and
+  the update notification.
+- [ ] Two-peer live voice: PTT audibility, proximity fade, and per-peer
+  volume/quality with real peers.
+- [ ] Multi-monitor restore and clamp-back (item 5).
