@@ -167,5 +167,6 @@ predates the GitHub migration and has no tagged GitHub Release.
 - Overlay resize behavior.
 - Windows Defender false-positive mitigations.
 
-[Unreleased]: https://github.com/Frowg-Systems-Inc/Goisleya/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/Frowg-Systems-Inc/Goisleya/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/Frowg-Systems-Inc/Goisleya/releases/tag/v1.4.1
 [1.4.0]: https://github.com/Frowg-Systems-Inc/Goisleya/releases/tag/v1.4.0
