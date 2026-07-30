@@ -1,9 +1,9 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Media;
 using System.Net.Http;
 using System.Net.WebSockets;
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -1267,6 +1267,29 @@ public partial class MainWindow
         var serverCheck = VoiceServerReadinessClient.Present(
             _voiceServerCheckState,
             _voiceServerReadiness);
+        // Honest CONNECTING sub-state: host start, backoff countdown, room join.
+        // Display-only; the connect/reconnect logic above is untouched.
+        var voiceConnectPhase = VoiceConnectPhaseLogic.Present(
+            _voiceEnabled,
+            _voiceBridgeRunning,
+            _voiceConnecting,
+            _voiceAutoConnectInFlight,
+            _voiceEngineState,
+            IsBundledLocalVoiceServerUrl(_voiceServerUrl),
+            _voiceServerCheckState == VoiceServerCheckState.Ready,
+            VoiceConnectPhaseLogic.AutoRetryArmed(
+                _voiceEnabled,
+                _voiceAutoOpen,
+                _streamerMode,
+                _voiceUserDisconnectedThisSession,
+                _voiceSessionConnectedThisSession,
+                _voiceBridgeRunning,
+                _voiceConnecting,
+                _voiceAutoConnectInFlight,
+                _voiceEngineState),
+            VoiceConnectPhaseLogic.RetrySecondsRemaining(
+                DateTimeOffset.UtcNow,
+                _voiceAutoReconnectNotBefore));
         var voiceProblem = !keyObserverReady || hasError || voiceQuality.Severity >= 2;
         var hudPriority = CurrentHudPriorityPresentation(voiceActive, voiceProblem);
         var showHud = presentation.ShowHud && !hudPriority.SuppressIdleVoice;
@@ -1286,6 +1309,7 @@ public partial class MainWindow
             voiceQuality.Label, voiceQuality.Detail, voiceQuality.Severity, voiceQuality.Fresh,
             serverCheck.Label, serverCheck.Detail, serverCheck.Severity,
             _voiceServerCheckInFlight, _voiceServerCheckedUrl,
+            voiceConnectPhase.Phase, voiceConnectPhase.Pill,
             remoteSpeakerCount,
             pendingVoiceRouteOffer?.OfferId, pendingOfferSeconds / 5, _voiceRouteShareStatus,
             _voiceRouteSendOfferId, _routeStopCount, _routeStops.Count, _routePlanSource);
@@ -1331,17 +1355,26 @@ public partial class MainWindow
             ? "ISLEY VOICE DISABLED"
             : _voiceBridgeRunning
                 ? $"ISLEY VOICE CONNECTED · {Math.Max(1, _voiceParticipantCount)}"
-                : _voiceConnecting
+                : voiceConnectPhase.Phase != VoiceConnectPhase.None
+                    ? voiceConnectPhase.BridgeLabel
+                    : _voiceConnecting
                     ? "ISLEY VOICE CONNECTING"
                     : hasError ? "ISLEY VOICE NEEDS ATTENTION" : "BUILT-IN VOICE READY";
         VoiceBridgeDetailText.Text = !_voiceEnabled
             ? "Enable voice to connect a private room"
+            : voiceConnectPhase.Phase != VoiceConnectPhase.None
+                ? voiceConnectPhase.Detail
             : string.IsNullOrWhiteSpace(_voiceEngineDetail)
                 ? "Microphone is off until Connect is pressed"
                 : _voiceEngineDetail;
-        VoiceClientStateText.Text = !_voiceEnabled
+        VoiceClientStateText.Text = voiceConnectPhase.Phase != VoiceConnectPhase.None
+            ? voiceConnectPhase.Pill
+            : !_voiceEnabled
             ? "OFF"
             : _voiceBridgeRunning ? "CONNECTED" : _voiceConnecting ? "CONNECTING" : hasError ? "ERROR" : "READY";
+        VoiceClientStateText.ToolTip = voiceConnectPhase.Phase != VoiceConnectPhase.None
+            ? voiceConnectPhase.Detail
+            : null;
         VoiceClientStateText.Foreground = _voiceBridgeRunning
             ? (Brush)FindResource("SuccessBrush")
             : hasError ? (Brush)FindResource("WarningBrush") : (Brush)FindResource("AccentBrush");
