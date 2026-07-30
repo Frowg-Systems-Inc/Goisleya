@@ -13,7 +13,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: baseUrl,
     title: "Download Isley for Windows",
     description:
-      "Download Isley 1.3.6 with calibrated visible-HUD tools, Live Map, authorized server telemetry, survival tools, and private voice.",
+      "Download Isley 1.4.0 with calibrated visible-HUD tools, Live Map, authorized server telemetry, survival tools, and private voice.",
     icons: {
       icon: "/isley-triceratops-teeth-clean.png",
       shortcut: "/isley-triceratops-teeth-clean.png",
@@ -28,7 +28,7 @@ export async function generateMetadata(): Promise<Metadata> {
     twitter: {
       card: "summary_large_image",
       title: "Download Isley for Windows",
-      description: "Isley 1.3.6: calibrated visible-HUD tools and an authorized live awareness network for The Isle.",
+      description: "Isley 1.4.0: calibrated visible-HUD tools and an authorized live awareness network for The Isle.",
       images: [socialImage],
     },
   };
