@@ -77,7 +77,8 @@ connection private.
 
 ### Secure guided start
 
-The server-network ZIP includes `Start-IsleyServerBridge.ps1`. It validates the
+The 1.4.0 server-network ZIP (`Isley-Server-Network.zip`) includes
+`Start-IsleyServerBridge.ps1`. It validates the
 server ID, HTTPS relay URL, source mode, port, and cadence; prompts privately for
 the relay secret and RCON password or plugin key; and passes those values only
 to the bridge process. It does not save credentials to a file or print them.
@@ -189,6 +190,16 @@ https://relay.example/?server=my-isle-server
 
 Public plain HTTP relay links are rejected. Loopback HTTP remains available for
 local development.
+
+### Updating
+
+Player clients self-update from 1.4.0 onward. The NEXT release (1.4.0 → 1.4.x)
+is the first to ship a delta package, so that update downloads only what
+changed — verified with the same hash, size, and zip-safety posture as a full
+package, with automatic fallback to the full download. Relay and bridge builds
+ship per release in `Isley-Server-Network.zip` and do not self-update; redeploy
+the matching kit when a release changes them. Because stream v1 and v2 viewers
+coexist on one relay, the client rollout is order-independent.
 
 ## Authentication and transport guarantees
 

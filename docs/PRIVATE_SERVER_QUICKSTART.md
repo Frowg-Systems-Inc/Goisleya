@@ -25,6 +25,11 @@ panel, which offers Connect / Disconnect / Forget session controls.
 Isley's live path is `game source → Isley Server Bridge → Isley Relay →
 players`. Full detail: [ISLEY_LIVE_NETWORK.md](ISLEY_LIVE_NETWORK.md).
 
+Download and extract the 1.4.0 server-network kit
+(`Isley-Server-Network.zip`) from the download site or the
+[GitHub Releases page](https://github.com/Frowg-Systems-Inc/Goisleya/releases);
+it contains the relay, bridge, and guided launcher used below.
+
 1. **Relay (the only public piece).** Host `Isley.Relay` behind HTTPS with
    WebSocket upgrade:
 
@@ -55,6 +60,19 @@ players`. Full detail: [ISLEY_LIVE_NETWORK.md](ISLEY_LIVE_NETWORK.md).
 4. Pick an awareness mode (consent-filtered by default, or explicit
    server-wide awareness) — see the awareness section of
    [ISLEY_LIVE_NETWORK.md](ISLEY_LIVE_NETWORK.md).
+
+5. **Watch the relay.** Aggregate operational counters (frames relayed,
+   rejections, active bridges/viewers, uptime) are exposed at the
+   loopback-only `/metrics` endpoint — see the
+   [relay metrics section](ISLEY_LIVE_NETWORK.md#relay-metrics-and-bridge-diagnostics)
+   of the live-network doc.
+
+**Updating:** player clients on 1.4.0 or newer update themselves; from the
+NEXT release (1.4.0 → 1.4.x) the updater downloads a delta package instead
+of the full ZIP when the manifest offers one — same hash and zip-safety
+verification, automatic full-package fallback. Relay and bridge do not
+self-update: deploy the matching `Isley-Server-Network.zip` when a release
+changes them.
 
 ## What players get on a connected server
 
