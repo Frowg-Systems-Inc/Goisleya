@@ -1,8 +1,15 @@
 """Regression checks: updater delta mode, beta channel, and boot-ok marker."""
 
+import os
 from pathlib import Path
 
-ROOT = Path("/app")
+# Repo root: ISLEY_REPO_ROOT wins (CI / exotic checkouts), else the parent of
+# the tests/ directory this file lives in — portable across developer machines.
+ROOT = (
+    Path(os.environ["ISLEY_REPO_ROOT"])
+    if os.environ.get("ISLEY_REPO_ROOT")
+    else Path(__file__).resolve().parents[1]
+)
 CLIENT = ROOT / "BurntHud/IsleyUpdateClient.cs"
 LOGIC = ROOT / "BurntHud/IsleyReleaseLogic.cs"
 UPDATES = ROOT / "BurntHud/MainWindow.Updates.cs"

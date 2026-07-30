@@ -29,7 +29,11 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = (
+    Path(os.environ["ISLEY_REPO_ROOT"])
+    if os.environ.get("ISLEY_REPO_ROOT")
+    else Path(__file__).resolve().parents[1]
+)
 PROJECT_DIR = ROOT / "Isley.VoiceServer"
 PROJECT_FILE = PROJECT_DIR / "Isley.VoiceServer.csproj"
 

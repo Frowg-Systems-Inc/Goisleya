@@ -1,11 +1,20 @@
 """Regression checks: retired species parsing, Azure removal, and cert signing."""
 
+import os
 from pathlib import Path
+import shutil
 import subprocess
 
+import pytest
 import yaml
 
-ROOT = Path("/app")
+# Repo root: ISLEY_REPO_ROOT wins (CI / exotic checkouts), else the parent of
+# the tests/ directory this file lives in — portable across developer machines.
+ROOT = (
+    Path(os.environ["ISLEY_REPO_ROOT"])
+    if os.environ.get("ISLEY_REPO_ROOT")
+    else Path(__file__).resolve().parents[1]
+)
 CONTROLLER = ROOT / "BurntHud/Map/isley-map-controller.js"
 WORKFLOW = ROOT / ".github/workflows/release-package.yml"
 PACKAGE_SCRIPT = ROOT / "scripts/package-isley-1.3.ps1"
@@ -129,14 +138,29 @@ def test_certificate_signing_passthrough_is_intact():
         assert name in env, f"Package step no longer passes {name}"
 
 
+def find_powershell() -> str | None:
+    """Locate a PowerShell host: Emergent CI layout, then PATH, then Windows PowerShell."""
+    for candidate in (
+        Path("/opt/pwsh/pwsh"),
+        shutil.which("pwsh"),
+        Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
+    ):
+        if candidate and Path(candidate).is_file():
+            return str(candidate)
+    return None
+
+
 def test_packaging_script_parses_and_keeps_certificate_route():
+    powershell = find_powershell()
+    if powershell is None:
+        pytest.skip("No PowerShell host (pwsh/powershell) available in this environment.")
     command = (
         '$errors = $null; $tokens = $null; '
         f'[void][System.Management.Automation.Language.Parser]::ParseFile("{PACKAGE_SCRIPT}", '
         '[ref]$tokens, [ref]$errors); if ($errors.Count) { exit 1 }'
     )
     result = subprocess.run(
-        ["/opt/pwsh/pwsh", "-NoProfile", "-NonInteractive", "-Command", command],
+        [powershell, "-NoProfile", "-NonInteractive", "-Command", command],
         cwd=ROOT,
         capture_output=True,
         text=True,

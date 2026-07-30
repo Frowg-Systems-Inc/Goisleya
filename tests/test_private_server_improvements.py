@@ -1,11 +1,18 @@
 """Regression contracts for private-server and reliability improvements."""
 
+import os
 from pathlib import Path
 import re
 import subprocess
 
 
-ROOT = Path("/app")
+# Repo root: ISLEY_REPO_ROOT wins (CI / exotic checkouts), else the parent of
+# the tests/ directory this file lives in — portable across developer machines.
+ROOT = (
+    Path(os.environ["ISLEY_REPO_ROOT"])
+    if os.environ.get("ISLEY_REPO_ROOT")
+    else Path(__file__).resolve().parents[1]
+)
 BURNTHUD = ROOT / "BurntHud"
 MAIN = (BURNTHUD / "MainWindow.xaml.cs").read_text(encoding="utf-8")
 COMMANDS = (BURNTHUD / "MainWindow.Commands.cs").read_text(encoding="utf-8")

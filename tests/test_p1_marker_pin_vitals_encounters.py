@@ -1,11 +1,18 @@
 """P1 regression contracts for marker interpolation, pin sharing, vitals, and encounters."""
 
+import os
 from pathlib import Path
 import re
 import subprocess
 
 
-ROOT = Path("/app")
+# Repo root: ISLEY_REPO_ROOT wins (CI / exotic checkouts), else the parent of
+# the tests/ directory this file lives in — portable across developer machines.
+ROOT = (
+    Path(os.environ["ISLEY_REPO_ROOT"])
+    if os.environ.get("ISLEY_REPO_ROOT")
+    else Path(__file__).resolve().parents[1]
+)
 BURNTHUD = ROOT / "BurntHud"
 MAIN = (BURNTHUD / "MainWindow.xaml.cs").read_text(encoding="utf-8")
 COMMANDS = (BURNTHUD / "MainWindow.Commands.cs").read_text(encoding="utf-8")
@@ -46,10 +53,12 @@ def run_node_harness(tmp_path: Path, body: str) -> subprocess.CompletedProcess[s
 
 def pin_harness_prelude() -> str:
     """Build a harness that evaluates the shipped share-code functions unchanged."""
+    # Forward slashes keep the Windows path valid inside a JS string literal.
+    controller_path = (BURNTHUD / "Map/isley-map-controller.js").resolve().as_posix()
     return r"""
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const source = fs.readFileSync('/app/BurntHud/Map/isley-map-controller.js', 'utf8');
+const source = fs.readFileSync('""" + controller_path + r"""', 'utf8');
 const start = source.indexOf("const pinShareCodePrefix = 'ISLEYPINS1.';");
 const end = source.indexOf('const partitionPinsByExpiry', start);
 assert.ok(start >= 0 && end > start);
