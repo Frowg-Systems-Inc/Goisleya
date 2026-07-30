@@ -63,6 +63,48 @@ try {
         }
     }
 
+    # pytest contract suites (tests/). Optional tooling: prefer a repo-local
+    # .venv-tools venv, then python on PATH; skip with a warning when neither
+    # python nor pytest is available. ISLEY_REPO_ROOT pins the suites to this
+    # checkout no matter where the interpreter lives.
+    $pytestPython = $null
+    foreach ($candidate in @(
+        (Join-Path $root ".venv-tools\Scripts\python.exe"),
+        (Join-Path $root "..\.venv-tools\Scripts\python.exe")
+    )) {
+        if (Test-Path $candidate) {
+            $pytestPython = (Resolve-Path $candidate).Path
+            break
+        }
+    }
+    if (!$pytestPython) {
+        $pythonOnPath = Get-Command python -ErrorAction SilentlyContinue
+        if ($pythonOnPath) {
+            $pytestPython = $pythonOnPath.Source
+        }
+    }
+    if ($pytestPython) {
+        & $pytestPython -c "import pytest" 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            $pytestPython = $null
+        }
+    }
+    if (!$pytestPython) {
+        Write-Warning "python/pytest not found; skipping the tests/ pytest suites (pip install pytest pyyaml to enable)."
+    }
+    else {
+        $previousRepoRoot = $env:ISLEY_REPO_ROOT
+        $env:ISLEY_REPO_ROOT = $root
+        try {
+            Invoke-NativeStep "Run pytest contract suites (tests/)" {
+                & $pytestPython -m pytest (Join-Path $root "tests") -q
+            }
+        }
+        finally {
+            $env:ISLEY_REPO_ROOT = $previousRepoRoot
+        }
+    }
+
     $verifierProjects = Get-ChildItem $verificationRoot -Filter "*.csproj" -File -Recurse |
         Sort-Object FullName
     foreach ($project in $verifierProjects) {
