@@ -4,9 +4,9 @@ import { readFile, stat } from "node:fs/promises";
 import test from "node:test";
 
 const EXPECTED_CLIENT_SHA256 =
-  "393C1C79C6B2F3C6E4AC4CCFC94245139008D4BCE1AEBB5836726B9140684566";
+  "281D4A0E59C8CE3372E0380AC33D774BC942D0DEF95B9A29560DF701A066CEFA";
 const EXPECTED_SERVER_SHA256 =
-  "EDE250AC4FBCD97CE5997C1C61ABE3C92B9FBB29B87E9C3BE4E88DAE740C105E";
+  "122FE08E213DBBD4FA1EE9CF722F8B620ABBAC3FE177872913AD9EEA276774AA";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -163,7 +163,7 @@ test("ships the exact verified Windows archive", async () => {
     {
       manifestVersion: 1,
       channel: "stable",
-      version: "1.4.0",
+      version: "1.4.1",
       downloadUrl:
         "https://isley-download.gmith.chatgpt.site/Isley-Windows-x64.zip",
       sha256,

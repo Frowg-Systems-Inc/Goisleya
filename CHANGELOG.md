@@ -13,6 +13,49 @@ published on the
 
 No unreleased changes yet.
 
+## [1.4.1] - 2026-07-30
+
+Patch release driven by the first live-game test session. First release to
+ship an automatic **delta package** (`Isley-delta-1.4.0-1.4.1.zip`, 2.1 MB vs
+the 9.0 MB full archive) — clients on 1.4.0 download the delta on their next
+update check.
+
+### Added
+
+- **Voice connect-phase diagnostics** — the voice pill now shows what is
+  actually happening: `STARTING HOST`, `STARTING`, `JOINING` (host verified,
+  requesting mic), or `RETRY Ns` with a live countdown; tooltips carry the
+  detail. Display-only; connect/reconnect logic unchanged.
+- **Capture discoverability hint** — after three minutes of live game feed
+  with zero captures, a one-shot toast explains the in-game GPS sync
+  (Tab → click asset location); snoozes forever once used or dismissed.
+- **Palette POPULAR list** — the empty-query Quick Commands state leads with
+  a curated popular-commands list, resolved live from the catalog.
+- **Clipboard ` · HELD` suffix** on position copy when heading confidence is
+  degraded or stale.
+- **Four backend verifier suites** (verifiers 71 → 75): relay viewer privacy
+  (pseudonymization, queue coalescing, v2 negotiation), Steam device auth
+  (replay guard, mocked HTTP edge), bearer auth accept/reject matrix, and
+  RCON protocol (loopback fake server, wire-exact bytes, backoff doubling).
+- **CHANGELOG.md** (this file) and smoke-test results section in
+  `docs/WINDOWS_SMOKE_TEST.md`.
+
+### Changed
+
+- Voice quality empty state (`· —`) tooltip now explains when stats appear.
+- Operator docs name the 1.4.0+ server kit and document relay `/metrics`
+  and delta-update behavior.
+
+### Fixed
+
+- **`_lastServerStatus` dead state** — the field was never assigned after
+  the bundled-map pivot; now wired to the community server-status refresh
+  (behavior unchanged; the two readers were contract-pinned).
+- Whitespace normalization in `MainWindow.Commands.cs` and
+  `MainWindow.Voice.cs` (184 editorconfig violations → 0; whitespace-only).
+- Analyzer leftovers CA1826 ×4, CA1847 ×1 in verification projects.
+- Download-site metadata now tracks the current release (1.4.1 constants).
+
 ## [1.4.0] - 2026-07-29
 
 The first release cut from the GitHub repository
