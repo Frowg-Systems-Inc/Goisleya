@@ -211,6 +211,44 @@ if (-not [string]::IsNullOrWhiteSpace($DeltaArchivePath)) {
     if ($deltaBytes -lt 256 -or $deltaBytes -gt 100MB) {
         throw "The delta archive size is outside the client's accepted bounds (256 B - 100 MB)."
     }
+    # Open the archive and enforce the client's inner-manifest contract:
+    # format 1, matching from/to versions, and deletedFiles a FLAT string
+    # array (the client rejects anything else and silently falls back).
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $deltaZip = [System.IO.Compression.ZipFile]::OpenRead($resolvedDelta)
+    try {
+        $deltaEntry = $deltaZip.Entries | Where-Object {
+            $_.FullName -eq "isley-delta-manifest.json"
+        } | Select-Object -First 1
+        if ($null -eq $deltaEntry) {
+            throw "The delta archive is missing isley-delta-manifest.json."
+        }
+        $deltaReader = New-Object System.IO.StreamReader($deltaEntry.Open())
+        try {
+            $deltaManifest = $deltaReader.ReadToEnd() | ConvertFrom-Json
+        } finally {
+            $deltaReader.Dispose()
+        }
+    } finally {
+        $deltaZip.Dispose()
+    }
+    if ($deltaManifest.format -ne 1 `
+            -or $deltaManifest.fromVersion -ne $deltaFromVersion `
+            -or $deltaManifest.toVersion -ne $releaseVersion) {
+        throw "The delta inner manifest version fields do not match this release."
+    }
+    if ($null -eq $deltaManifest.deletedFiles) {
+        throw "The delta inner manifest is missing deletedFiles."
+    }
+    foreach ($deltaPath in $deltaManifest.deletedFiles) {
+        if ($deltaPath -isnot [string] -or $deltaPath.Length -eq 0 `
+                -or $deltaPath.Length -gt 512 `
+                -or [System.IO.Path]::IsPathRooted($deltaPath) `
+                -or ($deltaPath.Replace('\', '/').Split('/') -contains '..') `
+                -or $deltaPath.StartsWith("IsleyData", [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "The delta inner manifest contains an invalid deletedFiles entry: $deltaPath"
+        }
+    }
     Copy-Item -LiteralPath $resolvedDelta `
         -Destination (Join-Path $resolvedSiteRoot "public\$deltaName") `
         -Force
