@@ -323,6 +323,21 @@ public partial class MainWindow
         UpdateCommandPaletteResults();
     }
 
+    // Statically featured starters surfaced when the palette query is empty.
+    // Ids only: titles resolve live from the catalog below so a renamed or
+    // removed command can never leave a stale label behind, and an id that
+    // leaves the catalog simply drops out of the hint.
+    private static readonly string[] PopularCommandActionIds =
+    [
+        "growth-clock",
+        "safe-logout",
+        "reload",
+        "voice-chat",
+        "layout-profiles",
+        "diagnostics-export",
+        "private-server-connect"
+    ];
+
     private void UpdateCommandPaletteResults()
     {
         if (CommandPaletteResultsPanel is null
@@ -396,8 +411,8 @@ public partial class MainWindow
             : query.Length > 0
                 ? "Star a result to keep it in Quick Access."
                 : _commandFavoriteActionIds.Count == 0
-                    ? "Star any tool to keep it at the top."
-                    : "Favorites first, then your latest tools.";
+                    ? $"{BuildPopularCommandHint()} Star any tool to keep it at the top."
+                    : $"{BuildPopularCommandHint()} Favorites first, then your latest tools.";
         CommandPaletteClearRecentButton.Visibility = _commandRecentActionIds.Count > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -478,6 +493,20 @@ public partial class MainWindow
             row.Children.Add(favoriteButton);
             CommandPaletteResultsPanel.Children.Add(row);
         }
+    }
+
+    private static string BuildPopularCommandHint()
+    {
+        var actionsById = CommandPaletteActions.ToDictionary(
+            action => action.Id,
+            StringComparer.OrdinalIgnoreCase);
+        var titles = PopularCommandActionIds
+            .Where(actionsById.ContainsKey)
+            .Select(actionId => actionsById[actionId].Title)
+            .ToList();
+        return titles.Count == 0
+            ? "Popular starters below."
+            : $"POPULAR · {string.Join(" · ", titles)}.";
     }
 
     private static bool ContainsCommandAction(IEnumerable<string> actionIds, string actionId) =>
