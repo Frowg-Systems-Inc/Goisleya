@@ -171,6 +171,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RelayBearerAuthVerifier", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EvrimaRconProtocolVerifier", "Verification\EvrimaRconProtocolVerifier\EvrimaRconProtocolVerifier.csproj", "{B692B1C7-5A11-42E4-1D15-04396B28E551}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VoiceConnectPhaseVerifier", "Verification\VoiceConnectPhaseVerifier\VoiceConnectPhaseVerifier.csproj", "{45478A01-46F2-4718-8CB6-F60B02B67099}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CaptureHintSuggestVerifier", "Verification\CaptureHintSuggestVerifier\CaptureHintSuggestVerifier.csproj", "{EDA0AB6C-917E-4B5D-AE28-A478B17F77B4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -512,6 +516,14 @@ Global
 		{B692B1C7-5A11-42E4-1D15-04396B28E551}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B692B1C7-5A11-42E4-1D15-04396B28E551}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B692B1C7-5A11-42E4-1D15-04396B28E551}.Release|Any CPU.Build.0 = Release|Any CPU
+		{45478A01-46F2-4718-8CB6-F60B02B67099}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{45478A01-46F2-4718-8CB6-F60B02B67099}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{45478A01-46F2-4718-8CB6-F60B02B67099}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{45478A01-46F2-4718-8CB6-F60B02B67099}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EDA0AB6C-917E-4B5D-AE28-A478B17F77B4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDA0AB6C-917E-4B5D-AE28-A478B17F77B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDA0AB6C-917E-4B5D-AE28-A478B17F77B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EDA0AB6C-917E-4B5D-AE28-A478B17F77B4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{9D87C798-94D4-4ED8-AA34-FEE703E43E59} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
@@ -591,5 +603,7 @@ Global
 		{94708FA5-37EF-40C2-FAF3-04174906C32F} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 		{A581A0B6-4900-41D3-0C04-04285A17D440} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 		{B692B1C7-5A11-42E4-1D15-04396B28E551} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
+		{45478A01-46F2-4718-8CB6-F60B02B67099} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
+		{EDA0AB6C-917E-4B5D-AE28-A478B17F77B4} = {F4973CD0-DF36-46BC-8620-C2FBAAADF679}
 	EndGlobalSection
 EndGlobal

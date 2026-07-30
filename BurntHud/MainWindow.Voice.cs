@@ -1,9 +1,9 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Media;
 using System.Net.Http;
 using System.Net.WebSockets;
-using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -1267,6 +1267,29 @@ public partial class MainWindow
         var serverCheck = VoiceServerReadinessClient.Present(
             _voiceServerCheckState,
             _voiceServerReadiness);
+        // Honest CONNECTING sub-state: host start, backoff countdown, room join.
+        // Display-only; the connect/reconnect logic above is untouched.
+        var voiceConnectPhase = VoiceConnectPhaseLogic.Present(
+            _voiceEnabled,
+            _voiceBridgeRunning,
+            _voiceConnecting,
+            _voiceAutoConnectInFlight,
+            _voiceEngineState,
+            IsBundledLocalVoiceServerUrl(_voiceServerUrl),
+            _voiceServerCheckState == VoiceServerCheckState.Ready,
+            VoiceConnectPhaseLogic.AutoRetryArmed(
+                _voiceEnabled,
+                _voiceAutoOpen,
+                _streamerMode,
+                _voiceUserDisconnectedThisSession,
+                _voiceSessionConnectedThisSession,
+                _voiceBridgeRunning,
+                _voiceConnecting,
+                _voiceAutoConnectInFlight,
+                _voiceEngineState),
+            VoiceConnectPhaseLogic.RetrySecondsRemaining(
+                DateTimeOffset.UtcNow,
+                _voiceAutoReconnectNotBefore));
         var voiceProblem = !keyObserverReady || hasError || voiceQuality.Severity >= 2;
         var hudPriority = CurrentHudPriorityPresentation(voiceActive, voiceProblem);
         var showHud = presentation.ShowHud && !hudPriority.SuppressIdleVoice;
@@ -1286,6 +1309,7 @@ public partial class MainWindow
             voiceQuality.Label, voiceQuality.Detail, voiceQuality.Severity, voiceQuality.Fresh,
             serverCheck.Label, serverCheck.Detail, serverCheck.Severity,
             _voiceServerCheckInFlight, _voiceServerCheckedUrl,
+            voiceConnectPhase.Phase, voiceConnectPhase.Pill,
             remoteSpeakerCount,
             pendingVoiceRouteOffer?.OfferId, pendingOfferSeconds / 5, _voiceRouteShareStatus,
             _voiceRouteSendOfferId, _routeStopCount, _routeStops.Count, _routePlanSource);
@@ -1331,17 +1355,26 @@ public partial class MainWindow
             ? "ISLEY VOICE DISABLED"
             : _voiceBridgeRunning
                 ? $"ISLEY VOICE CONNECTED · {Math.Max(1, _voiceParticipantCount)}"
-                : _voiceConnecting
+                : voiceConnectPhase.Phase != VoiceConnectPhase.None
+                    ? voiceConnectPhase.BridgeLabel
+                    : _voiceConnecting
                     ? "ISLEY VOICE CONNECTING"
                     : hasError ? "ISLEY VOICE NEEDS ATTENTION" : "BUILT-IN VOICE READY";
         VoiceBridgeDetailText.Text = !_voiceEnabled
             ? "Enable voice to connect a private room"
+            : voiceConnectPhase.Phase != VoiceConnectPhase.None
+                ? voiceConnectPhase.Detail
             : string.IsNullOrWhiteSpace(_voiceEngineDetail)
                 ? "Microphone is off until Connect is pressed"
                 : _voiceEngineDetail;
-        VoiceClientStateText.Text = !_voiceEnabled
+        VoiceClientStateText.Text = voiceConnectPhase.Phase != VoiceConnectPhase.None
+            ? voiceConnectPhase.Pill
+            : !_voiceEnabled
             ? "OFF"
             : _voiceBridgeRunning ? "CONNECTED" : _voiceConnecting ? "CONNECTING" : hasError ? "ERROR" : "READY";
+        VoiceClientStateText.ToolTip = voiceConnectPhase.Phase != VoiceConnectPhase.None
+            ? voiceConnectPhase.Detail
+            : null;
         VoiceClientStateText.Foreground = _voiceBridgeRunning
             ? (Brush)FindResource("SuccessBrush")
             : hasError ? (Brush)FindResource("WarningBrush") : (Brush)FindResource("AccentBrush");
@@ -1763,109 +1796,109 @@ public partial class MainWindow
         _voiceAutoConnectInFlight = true;
         try
         {
-        var requestedServer = VoiceServerInputBox.Text.Trim();
-        var normalizedServer = NormalizeVoiceServerUrl(requestedServer);
-        if (!string.Equals(normalizedServer, requestedServer, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(requestedServer.TrimEnd('/'), normalizedServer.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
-        {
-            await ShowHotkeyToastAsync("VOICE SERVER MUST USE WSS OR LOCALHOST WS", false);
-            return;
-        }
-
-        _voiceServerUrl = normalizedServer;
-        VoiceServerInputBox.Text = normalizedServer;
-        var serverReady = IsBundledLocalVoiceServerUrl(normalizedServer)
-            ? await EnsureBundledVoiceHostReadyAsync(showToast: false)
-            : await CheckVoiceServerReadinessAsync(userInitiated: false);
-        if (!serverReady)
-        {
-            await ShowHotkeyToastAsync("VOICE SERVER NOT READY · MICROPHONE KEPT OFF", false);
-            return;
-        }
-        var normalizedName = Regex.Replace(VoiceDisplayNameInputBox.Text ?? string.Empty, @"\s+", " ").Trim();
-        normalizedName = Regex.Replace(normalizedName, @"[^\p{L}\p{N} _.'-]", string.Empty);
-        if (string.IsNullOrWhiteSpace(normalizedName)) normalizedName = "Isley Player";
-        VoiceDisplayNameInputBox.Text = normalizedName[..Math.Min(32, normalizedName.Length)];
-        if (!VoiceInviteLogic.TryNormalizeRoomSecret(_voiceRoomSecret, out var normalizedRoomSecret))
-        {
-            normalizedRoomSecret = NewVoiceSecret(12);
-        }
-        _voiceRoomSecret = normalizedRoomSecret;
-        VoiceRoomKeyInputBox.Text = _voiceRoomSecret;
-
-        VoiceRelayConfig? relayConfig = null;
-        if (_voiceTurnRelayEnabled)
-        {
-            if (!VoiceRelayLogic.TryCreate(
-                    VoiceTurnUrlInputBox.Text,
-                    VoiceTurnUsernameInputBox.Text,
-                    VoiceTurnCredentialInputBox.Password,
-                    out var validatedRelay,
-                    out var relayError))
+            var requestedServer = VoiceServerInputBox.Text.Trim();
+            var normalizedServer = NormalizeVoiceServerUrl(requestedServer);
+            if (!string.Equals(normalizedServer, requestedServer, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(requestedServer.TrimEnd('/'), normalizedServer.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
             {
-                await ShowHotkeyToastAsync(relayError, false);
+                await ShowHotkeyToastAsync("VOICE SERVER MUST USE WSS OR LOCALHOST WS", false);
                 return;
             }
 
-            relayConfig = validatedRelay;
-            VoiceTurnUrlInputBox.Text = validatedRelay.Url;
-            VoiceTurnUsernameInputBox.Text = validatedRelay.Username;
-        }
+            _voiceServerUrl = normalizedServer;
+            VoiceServerInputBox.Text = normalizedServer;
+            var serverReady = IsBundledLocalVoiceServerUrl(normalizedServer)
+                ? await EnsureBundledVoiceHostReadyAsync(showToast: false)
+                : await CheckVoiceServerReadinessAsync(userInitiated: false);
+            if (!serverReady)
+            {
+                await ShowHotkeyToastAsync("VOICE SERVER NOT READY · MICROPHONE KEPT OFF", false);
+                return;
+            }
+            var normalizedName = Regex.Replace(VoiceDisplayNameInputBox.Text ?? string.Empty, @"\s+", " ").Trim();
+            normalizedName = Regex.Replace(normalizedName, @"[^\p{L}\p{N} _.'-]", string.Empty);
+            if (string.IsNullOrWhiteSpace(normalizedName)) normalizedName = "Isley Player";
+            VoiceDisplayNameInputBox.Text = normalizedName[..Math.Min(32, normalizedName.Length)];
+            if (!VoiceInviteLogic.TryNormalizeRoomSecret(_voiceRoomSecret, out var normalizedRoomSecret))
+            {
+                normalizedRoomSecret = NewVoiceSecret(12);
+            }
+            _voiceRoomSecret = normalizedRoomSecret;
+            VoiceRoomKeyInputBox.Text = _voiceRoomSecret;
 
-        _voiceConnecting = true;
-        _voiceEngineState = "STARTING";
-        _voiceEngineDetail = "LOADING BUILT-IN ENGINE";
-        ResetVoiceMicMeterState();
-        ResetVoiceQualityState();
-        _voiceUiSignature = string.Empty;
-        UpdateVoicePresentation();
-        if (!await InitializeVoiceEngineAsync())
-        {
-            DisarmVoiceMicrophonePermission();
-            await ShowHotkeyToastAsync("BUILT-IN VOICE COULD NOT START", false);
-            return;
-        }
+            VoiceRelayConfig? relayConfig = null;
+            if (_voiceTurnRelayEnabled)
+            {
+                if (!VoiceRelayLogic.TryCreate(
+                        VoiceTurnUrlInputBox.Text,
+                        VoiceTurnUsernameInputBox.Text,
+                        VoiceTurnCredentialInputBox.Password,
+                        out var validatedRelay,
+                        out var relayError))
+                {
+                    await ShowHotkeyToastAsync(relayError, false);
+                    return;
+                }
 
-        ArmVoiceMicrophonePermission();
-        _voiceConnecting = true;
-        _voiceEngineState = "CONNECTING";
-        _voiceEngineDetail = "REQUESTING MICROPHONE";
-        VoiceRoomInviteStatusText.Text = "CONNECTING · MICROPHONE CONSENT REQUIRED";
-        // Auto proximity keeps distance audio on; users can still switch to room radio after connect.
-        if (!userInitiated)
-        {
-            _voiceProximityEnabled = true;
-        }
-        PostVoiceCommand(new
-        {
-            type = "connect",
-            serverUrl = _voiceServerUrl,
-            roomSecret = _voiceRoomSecret,
-            peerId = _voicePeerId,
-            displayName = VoiceDisplayNameInputBox.Text,
-            natAssist = _voiceNatAssist,
-            proximityEnabled = _voiceProximityEnabled,
-            proximityMaxDistance = VoiceIntegrationLogic.Range(_voiceRangeIndex).MaxDistance,
-            echoCancellation = _voiceEchoCancellation,
-            noiseSuppression = _voiceNoiseSuppression,
-            autoGainControl = _voiceAutoGainControl,
-            micMeterEnabled = _voiceMicMeterEnabled,
-            qualityMonitorEnabled = _voiceQualityMonitorEnabled,
-            inputDeviceId = _voiceSelectedInputDeviceId,
-            outputDeviceId = _voiceSelectedOutputDeviceId,
-            turnRelay = relayConfig.HasValue,
-            turnUrl = relayConfig?.Url ?? string.Empty,
-            turnUsername = relayConfig?.Username ?? string.Empty,
-            turnCredential = relayConfig?.Credential ?? string.Empty
-        });
-        _voiceUiSignature = string.Empty;
-        UpdateVoicePresentation();
-        SaveSettings();
-        await ShowHotkeyToastAsync(
-            userInitiated
-                ? "ISLEY VOICE · CONNECTING"
-                : "PROXIMITY VOICE · AUTO CONNECTING",
-            true);
+                relayConfig = validatedRelay;
+                VoiceTurnUrlInputBox.Text = validatedRelay.Url;
+                VoiceTurnUsernameInputBox.Text = validatedRelay.Username;
+            }
+
+            _voiceConnecting = true;
+            _voiceEngineState = "STARTING";
+            _voiceEngineDetail = "LOADING BUILT-IN ENGINE";
+            ResetVoiceMicMeterState();
+            ResetVoiceQualityState();
+            _voiceUiSignature = string.Empty;
+            UpdateVoicePresentation();
+            if (!await InitializeVoiceEngineAsync())
+            {
+                DisarmVoiceMicrophonePermission();
+                await ShowHotkeyToastAsync("BUILT-IN VOICE COULD NOT START", false);
+                return;
+            }
+
+            ArmVoiceMicrophonePermission();
+            _voiceConnecting = true;
+            _voiceEngineState = "CONNECTING";
+            _voiceEngineDetail = "REQUESTING MICROPHONE";
+            VoiceRoomInviteStatusText.Text = "CONNECTING · MICROPHONE CONSENT REQUIRED";
+            // Auto proximity keeps distance audio on; users can still switch to room radio after connect.
+            if (!userInitiated)
+            {
+                _voiceProximityEnabled = true;
+            }
+            PostVoiceCommand(new
+            {
+                type = "connect",
+                serverUrl = _voiceServerUrl,
+                roomSecret = _voiceRoomSecret,
+                peerId = _voicePeerId,
+                displayName = VoiceDisplayNameInputBox.Text,
+                natAssist = _voiceNatAssist,
+                proximityEnabled = _voiceProximityEnabled,
+                proximityMaxDistance = VoiceIntegrationLogic.Range(_voiceRangeIndex).MaxDistance,
+                echoCancellation = _voiceEchoCancellation,
+                noiseSuppression = _voiceNoiseSuppression,
+                autoGainControl = _voiceAutoGainControl,
+                micMeterEnabled = _voiceMicMeterEnabled,
+                qualityMonitorEnabled = _voiceQualityMonitorEnabled,
+                inputDeviceId = _voiceSelectedInputDeviceId,
+                outputDeviceId = _voiceSelectedOutputDeviceId,
+                turnRelay = relayConfig.HasValue,
+                turnUrl = relayConfig?.Url ?? string.Empty,
+                turnUsername = relayConfig?.Username ?? string.Empty,
+                turnCredential = relayConfig?.Credential ?? string.Empty
+            });
+            _voiceUiSignature = string.Empty;
+            UpdateVoicePresentation();
+            SaveSettings();
+            await ShowHotkeyToastAsync(
+                userInitiated
+                    ? "ISLEY VOICE · CONNECTING"
+                    : "PROXIMITY VOICE · AUTO CONNECTING",
+                true);
         }
         finally
         {

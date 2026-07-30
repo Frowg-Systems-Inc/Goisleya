@@ -53,8 +53,8 @@ Check(VoicePeerQualityLogic.Describe(new VoicePeerQualitySnapshot(120, 12, 0.4),
         == "Per-peer quality monitor is off",
     "an inactive monitor says so");
 Check(VoicePeerQualityLogic.Describe(null, true)
-        == "No WebRTC sample for this peer yet; audio is unaffected",
-    "a missing sample stays honest and never blames audio");
+        == "No WebRTC sample yet — appears after peers talk while the monitor is on; audio is unaffected",
+    "a missing sample explains when quality appears and never blames audio");
 Check(VoicePeerQualityLogic.Describe(new VoicePeerQualitySnapshot(120.4, 12.4, 2.5), true)
         == "WebRTC stats measured on this encrypted peer connection · round trip 120 ms · jitter 12 ms · interval packet loss 2.5%",
     "a live sample attributes real WebRTC stats");

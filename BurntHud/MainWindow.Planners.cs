@@ -4111,6 +4111,19 @@ public partial class MainWindow
     // (observed via the session capture counter, so both the clipboard poll and the
     // visible-text read count), resets on a failed capture while the game or overlay is
     // foreground, and survives restarts through the planner-state store.
+    // Capture discoverability hint (one-shot per session, session-only state):
+    // after the visible-HUD game feed has been continuously live for
+    // CaptureHintSuggestLogic.LiveMinutesRequired minutes with zero captures,
+    // a single toast teaches the in-game Asset Location copy. Snoozes forever
+    // once a capture succeeds or the user taps the toast away.
+    private DateTimeOffset? _captureHintLiveSince;
+    private bool _captureHintShown;
+    private bool _captureHintSnoozed;
+    private bool _captureHintTapArmed;
+    private bool _captureHintTapWired;
+    private int _captureHintRevision;
+    private string _captureHintMessage = string.Empty;
+
     private void UpdateCaptureStreak(DateTimeOffset now)
     {
         var captureCount = _universalCoordinateCaptureCount;
@@ -4132,6 +4145,9 @@ public partial class MainWindow
             _captureStreakLastCount = captureCount;
             _captureStreakLastClipboardSequence = clipboardSequence;
             streakChanged = true;
+            // A real capture permanently retires the discoverability hint.
+            _captureHintSnoozed = true;
+            DismissCaptureHintToast();
         }
         else if (captureCount < _captureStreakLastCount)
         {
@@ -4155,6 +4171,7 @@ public partial class MainWindow
 
         if (!streakChanged)
         {
+            UpdateCaptureHint(now);
             return;
         }
 
@@ -4163,6 +4180,136 @@ public partial class MainWindow
         {
             _captureStreakLastPersistAt = now;
             PersistPlannerStateStore();
+        }
+        UpdateCaptureHint(now);
+    }
+
+    // Runs on the existing capture tick; no new timers. The hint is a
+    // longer-lived, tap-to-dismiss toast modeled on the Lite Mode suggestion
+    // so a regular 1.4 s hotkey toast cannot accidentally overwrite it early.
+    private void UpdateCaptureHint(DateTimeOffset now)
+    {
+        var feedLive = CurrentVisibleHudSensorSample(now) is not null;
+        _captureHintLiveSince = CaptureHintSuggestLogic.TrackLiveSince(
+            _captureHintLiveSince,
+            feedLive,
+            now);
+        if (CaptureHintSuggestLogic.ShouldHint(
+                feedLive,
+                _captureHintLiveSince,
+                now,
+                _universalCoordinateCaptureCount,
+                _universalCoordinateCaptureEnabled,
+                _streamerMode,
+                _captureHintShown,
+                _captureHintSnoozed))
+        {
+            _ = OfferCaptureHintAsync();
+        }
+    }
+
+    private async Task OfferCaptureHintAsync()
+    {
+        if (_captureHintShown)
+        {
+            return;
+        }
+
+        // Once per session; expiry without a tap snoozes for the session.
+        _captureHintShown = true;
+        var revision = ++_captureHintRevision;
+        if (!IsLoaded || HotkeyToastBorder is null || HotkeyToastText is null)
+        {
+            _captureHintSnoozed = true;
+            return;
+        }
+
+        if (!_captureHintTapWired)
+        {
+            _captureHintTapWired = true;
+            HotkeyToastBorder.Cursor = Cursors.Hand;
+            HotkeyToastBorder.MouseLeftButtonUp += CaptureHintToast_MouseLeftButtonUp;
+        }
+
+        var message = CaptureHintSuggestLogic.HintMessage;
+        _hotkeyToastRevision++;
+        _captureHintMessage = message;
+        _captureHintTapArmed = true;
+        HotkeyToastText.Text = message;
+        HotkeyToastBorder.BorderBrush = (Brush)FindResource("AccentBrush");
+        HotkeyToastBorder.BeginAnimation(OpacityProperty, null);
+        HotkeyToastBorder.Opacity = 1;
+        HotkeyToastBorder.Visibility = Visibility.Visible;
+        AddTacticalEvent(
+            "ROUTE",
+            "Player Sync hint shown",
+            $"Game feed live {CaptureHintSuggestLogic.LiveMinutesRequired}+ minutes with no capture · one-shot hint");
+        await Task.Delay(8000);
+        if (!IsLoaded || revision != _captureHintRevision || !_captureHintTapArmed)
+        {
+            return;
+        }
+
+        _captureHintTapArmed = false;
+        _captureHintSnoozed = true;
+        if (!string.Equals(HotkeyToastText.Text, message, StringComparison.Ordinal))
+        {
+            // Another toast took over; the hint still snoozes quietly.
+            return;
+        }
+
+        HotkeyToastBorder.BeginAnimation(
+            OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(
+                1,
+                0,
+                TimeSpan.FromMilliseconds(220)));
+        await Task.Delay(240);
+        if (IsLoaded && revision == _captureHintRevision)
+        {
+            HotkeyToastBorder.Visibility = Visibility.Collapsed;
+            HotkeyToastBorder.BeginAnimation(OpacityProperty, null);
+            HotkeyToastBorder.Opacity = 1;
+        }
+    }
+
+    private void CaptureHintToast_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        // Only the visible hint toast is tappable; any other toast is inert.
+        if (!_captureHintTapArmed
+            || HotkeyToastText is null
+            || !string.Equals(
+                HotkeyToastText.Text,
+                _captureHintMessage,
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        DismissCaptureHintToast();
+        _captureHintSnoozed = true;
+        AddTacticalEvent(
+            "ROUTE",
+            "Player Sync hint dismissed",
+            "User dismissed the one-shot capture discoverability hint");
+    }
+
+    private void DismissCaptureHintToast()
+    {
+        if (!_captureHintTapArmed)
+        {
+            return;
+        }
+
+        _captureHintTapArmed = false;
+        _captureHintRevision++;
+        if (HotkeyToastBorder is not null
+            && HotkeyToastText is not null
+            && string.Equals(HotkeyToastText.Text, _captureHintMessage, StringComparison.Ordinal))
+        {
+            HotkeyToastBorder.BeginAnimation(OpacityProperty, null);
+            HotkeyToastBorder.Opacity = 1;
+            HotkeyToastBorder.Visibility = Visibility.Collapsed;
         }
     }
 
