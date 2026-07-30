@@ -458,7 +458,12 @@ public partial class MainWindow : Window
     private IsleServerStatus? _lastCommunityServerStatus;
     private string _communityServerStatusError = string.Empty;
     private bool _serverStatusRefreshInFlight;
-    private IsleServerStatus? _lastServerStatus = null;
+    // Last public status snapshot for the current session. Written only by
+    // RefreshServerStatusAsync (community watch) and cleared on every session
+    // profile switch, so live-map readers never observe another session's
+    // snapshot. See commit notes: the original GameMonitoring-era writer was
+    // decommissioned with the bundled-map independence pivot.
+    private IsleServerStatus? _lastServerStatus;
     private readonly List<ServerPopulationSample> _serverPopulationSamples = [];
     private string _serverStatusError = string.Empty;
     private CancellationTokenSource? _serverStatusCancellation;
