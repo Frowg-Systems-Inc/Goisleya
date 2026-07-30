@@ -1786,6 +1786,9 @@ public partial class MainWindow
         _serverSessionProfileId = nextId;
         _playerSnapshot = null;
         _playerSnapshotTransportState = "unavailable";
+        // A public status snapshot belongs to the session that fetched it;
+        // drop it so live-map readers never show the previous session's data.
+        _lastServerStatus = null;
         ClearLifeTransitionSession();
         ClearVitalsTrendSamples();
         ClearCoreVitals(logEvent: false, updateUi: false);
@@ -2393,6 +2396,7 @@ public partial class MainWindow
                 status.Players,
                 status.Capacity);
             _lastCommunityServerStatus = status;
+            _lastServerStatus = status;
             _communityServerStatusError = string.Empty;
             if (status.Online)
             {

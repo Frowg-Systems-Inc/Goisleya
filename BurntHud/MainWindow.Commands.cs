@@ -323,6 +323,21 @@ public partial class MainWindow
         UpdateCommandPaletteResults();
     }
 
+    // Statically featured starters surfaced when the palette query is empty.
+    // Ids only: titles resolve live from the catalog below so a renamed or
+    // removed command can never leave a stale label behind, and an id that
+    // leaves the catalog simply drops out of the hint.
+    private static readonly string[] PopularCommandActionIds =
+    [
+        "growth-clock",
+        "safe-logout",
+        "reload",
+        "voice-chat",
+        "layout-profiles",
+        "diagnostics-export",
+        "private-server-connect"
+    ];
+
     private void UpdateCommandPaletteResults()
     {
         if (CommandPaletteResultsPanel is null
@@ -396,8 +411,8 @@ public partial class MainWindow
             : query.Length > 0
                 ? "Star a result to keep it in Quick Access."
                 : _commandFavoriteActionIds.Count == 0
-                    ? "Star any tool to keep it at the top."
-                    : "Favorites first, then your latest tools.";
+                    ? $"{BuildPopularCommandHint()} Star any tool to keep it at the top."
+                    : $"{BuildPopularCommandHint()} Favorites first, then your latest tools.";
         CommandPaletteClearRecentButton.Visibility = _commandRecentActionIds.Count > 0
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -478,6 +493,20 @@ public partial class MainWindow
             row.Children.Add(favoriteButton);
             CommandPaletteResultsPanel.Children.Add(row);
         }
+    }
+
+    private static string BuildPopularCommandHint()
+    {
+        var actionsById = CommandPaletteActions.ToDictionary(
+            action => action.Id,
+            StringComparer.OrdinalIgnoreCase);
+        var titles = PopularCommandActionIds
+            .Where(actionsById.ContainsKey)
+            .Select(actionId => actionsById[actionId].Title)
+            .ToList();
+        return titles.Count == 0
+            ? "Popular starters below."
+            : $"POPULAR · {string.Join(" · ", titles)}.";
     }
 
     private static bool ContainsCommandAction(IEnumerable<string> actionIds, string actionId) =>
@@ -685,15 +714,15 @@ public partial class MainWindow
                 await ShowHotkeyToastAsync("SHORELINE CHECK COMPLETE · VERIFY IN GAME", true);
                 break;
             case "terrain-course":
-            {
-                OpenMapToolsAtSection("routes");
-                var routed = await ExecuteMapperCommandAsync(
-                    "window.__isley?.startTerrainCourse() ?? false");
-                await ShowHotkeyToastAsync(
-                    routed ? "ROAD / TRAIL COURSE ACTIVE" : "CHOOSE A REACHABLE DESTINATION FIRST",
-                    routed);
-                break;
-            }
+                {
+                    OpenMapToolsAtSection("routes");
+                    var routed = await ExecuteMapperCommandAsync(
+                        "window.__isley?.startTerrainCourse() ?? false");
+                    await ShowHotkeyToastAsync(
+                        routed ? "ROAD / TRAIL COURSE ACTIVE" : "CHOOSE A REACHABLE DESTINATION FIRST",
+                        routed);
+                    break;
+                }
             case "route-confidence":
                 TerrainRouteConfidenceButton_Click(
                     TerrainRouteConfidenceButton,
@@ -950,38 +979,38 @@ public partial class MainWindow
                     true);
                 break;
             case "pack-center":
-            {
-                var stopping = _packRouteActive;
-                var routed = await ExecuteMapperCommandAsync(stopping
-                    ? "window.__isley?.clearWaypoint() ?? false"
-                    : "window.__isley?.routeToPackCenter() ?? false");
-                await ShowHotkeyToastAsync(
-                    routed ? stopping ? "PACK ROUTE STOPPED" : "FOLLOWING PACK CENTER" : "PACK CENTER UNAVAILABLE",
-                    routed);
-                break;
-            }
+                {
+                    var stopping = _packRouteActive;
+                    var routed = await ExecuteMapperCommandAsync(stopping
+                        ? "window.__isley?.clearWaypoint() ?? false"
+                        : "window.__isley?.routeToPackCenter() ?? false");
+                    await ShowHotkeyToastAsync(
+                        routed ? stopping ? "PACK ROUTE STOPPED" : "FOLLOWING PACK CENTER" : "PACK CENTER UNAVAILABLE",
+                        routed);
+                    break;
+                }
             case "pack-outlier":
-            {
-                var stopping = _packOutlierRouteActive;
-                var routed = await ExecuteMapperCommandAsync(stopping
-                    ? "window.__isley?.clearWaypoint() ?? false"
-                    : "window.__isley?.routeToPackOutlier() ?? false");
-                await ShowHotkeyToastAsync(
-                    routed
-                        ? stopping ? "PACK OUTLIER ROUTE STOPPED" : "FOLLOWING PACK OUTLIER"
-                        : "PACK OUTLIER UNAVAILABLE",
-                    routed);
-                break;
-            }
+                {
+                    var stopping = _packOutlierRouteActive;
+                    var routed = await ExecuteMapperCommandAsync(stopping
+                        ? "window.__isley?.clearWaypoint() ?? false"
+                        : "window.__isley?.routeToPackOutlier() ?? false");
+                    await ShowHotkeyToastAsync(
+                        routed
+                            ? stopping ? "PACK OUTLIER ROUTE STOPPED" : "FOLLOWING PACK OUTLIER"
+                            : "PACK OUTLIER UNAVAILABLE",
+                        routed);
+                    break;
+                }
             case "pack-alert":
-            {
-                PackSpreadAlertButton_Click(PackSpreadAlertButton, new RoutedEventArgs());
-                var packAlertDistance = _packSpreadAlertDistances[_packSpreadAlertIndex];
-                await ShowHotkeyToastAsync(
-                    packAlertDistance <= 0 ? "PACK SPREAD ALERT OFF" : $"PACK ALERT · {packAlertDistance:0} MU",
-                    true);
-                break;
-            }
+                {
+                    PackSpreadAlertButton_Click(PackSpreadAlertButton, new RoutedEventArgs());
+                    var packAlertDistance = _packSpreadAlertDistances[_packSpreadAlertIndex];
+                    await ShowHotkeyToastAsync(
+                        packAlertDistance <= 0 ? "PACK SPREAD ALERT OFF" : $"PACK ALERT · {packAlertDistance:0} MU",
+                        true);
+                    break;
+                }
             case "encounter-hud":
                 EncounterHudButton_Click(EncounterHudButton, new RoutedEventArgs());
                 await ShowHotkeyToastAsync(
@@ -989,46 +1018,46 @@ public partial class MainWindow
                     true);
                 break;
             case "encounter-alert":
-            {
-                EncounterAlertButton_Click(EncounterAlertButton, new RoutedEventArgs());
-                var encounterAlertDistance = _encounterAlertDistances[_encounterAlertIndex];
-                await ShowHotkeyToastAsync(
-                    encounterAlertDistance <= 0
-                        ? "ENCOUNTER ALERT OFF"
-                        : $"ENCOUNTER ALERT · {encounterAlertDistance:0} MU",
-                    true);
-                break;
-            }
-            case "encounter-memory":
-            {
-                EncounterMemoryButton_Click(EncounterMemoryButton, new RoutedEventArgs());
-                var encounterMemorySeconds = _encounterMemoryDurations[_encounterMemoryIndex];
-                await ShowHotkeyToastAsync(
-                    encounterMemorySeconds <= 0
-                        ? "LAST-SEEN MEMORY OFF"
-                        : $"LAST-SEEN MEMORY · {encounterMemorySeconds / 60}M",
-                    true);
-                break;
-            }
-            case "clear-encounter-memory":
-            {
-                var cleared = await ExecuteMapperCommandAsync(
-                    "window.__isley?.clearEncounterMemory() ?? false");
-                if (cleared)
                 {
-                    _encounterMemoryTrackCount = 0;
-                    _rememberedEncounterCount = 0;
-                    _rememberedEncounterNewestAgeMs = null;
-                    _nearestRememberedEncounterDistance = null;
-                    _nearestRememberedEncounterBearing = null;
-                    _nearestRememberedEncounterCardinal = string.Empty;
-                    UpdateEncounterAwareness();
+                    EncounterAlertButton_Click(EncounterAlertButton, new RoutedEventArgs());
+                    var encounterAlertDistance = _encounterAlertDistances[_encounterAlertIndex];
+                    await ShowHotkeyToastAsync(
+                        encounterAlertDistance <= 0
+                            ? "ENCOUNTER ALERT OFF"
+                            : $"ENCOUNTER ALERT · {encounterAlertDistance:0} MU",
+                        true);
+                    break;
                 }
-                await ShowHotkeyToastAsync(
-                    cleared ? "RECENT CONTACTS CLEARED" : "NO RECENT CONTACTS",
-                    true);
-                break;
-            }
+            case "encounter-memory":
+                {
+                    EncounterMemoryButton_Click(EncounterMemoryButton, new RoutedEventArgs());
+                    var encounterMemorySeconds = _encounterMemoryDurations[_encounterMemoryIndex];
+                    await ShowHotkeyToastAsync(
+                        encounterMemorySeconds <= 0
+                            ? "LAST-SEEN MEMORY OFF"
+                            : $"LAST-SEEN MEMORY · {encounterMemorySeconds / 60}M",
+                        true);
+                    break;
+                }
+            case "clear-encounter-memory":
+                {
+                    var cleared = await ExecuteMapperCommandAsync(
+                        "window.__isley?.clearEncounterMemory() ?? false");
+                    if (cleared)
+                    {
+                        _encounterMemoryTrackCount = 0;
+                        _rememberedEncounterCount = 0;
+                        _rememberedEncounterNewestAgeMs = null;
+                        _nearestRememberedEncounterDistance = null;
+                        _nearestRememberedEncounterBearing = null;
+                        _nearestRememberedEncounterCardinal = string.Empty;
+                        UpdateEncounterAwareness();
+                    }
+                    await ShowHotkeyToastAsync(
+                        cleared ? "RECENT CONTACTS CLEARED" : "NO RECENT CONTACTS",
+                        true);
+                    break;
+                }
             case "hub":
                 OpenToolsWorkspace("hub");
                 break;
@@ -1086,15 +1115,15 @@ public partial class MainWindow
                 break;
             case "preset-navigation":
             case "preset-survival":
-            {
-                var preset = actionId == "preset-navigation" ? "navigation" : "survival";
-                var applied = await ExecuteMapperCommandAsync(
-                    $"window.__isley?.applyLayerPreset('{preset}') ?? false");
-                await ShowHotkeyToastAsync(
-                    applied ? $"{preset.ToUpperInvariant()} LAYERS APPLIED" : "MAP LAYERS UNAVAILABLE",
-                    applied);
-                break;
-            }
+                {
+                    var preset = actionId == "preset-navigation" ? "navigation" : "survival";
+                    var applied = await ExecuteMapperCommandAsync(
+                        $"window.__isley?.applyLayerPreset('{preset}') ?? false");
+                    await ShowHotkeyToastAsync(
+                        applied ? $"{preset.ToUpperInvariant()} LAYERS APPLIED" : "MAP LAYERS UNAVAILABLE",
+                        applied);
+                    break;
+                }
             case "layout-profiles":
                 OpenLayoutProfilesSection();
                 await ShowHotkeyToastAsync("LAYOUT PROFILES OPEN", true);

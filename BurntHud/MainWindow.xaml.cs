@@ -458,7 +458,12 @@ public partial class MainWindow : Window
     private IsleServerStatus? _lastCommunityServerStatus;
     private string _communityServerStatusError = string.Empty;
     private bool _serverStatusRefreshInFlight;
-    private IsleServerStatus? _lastServerStatus = null;
+    // Last public status snapshot for the current session. Written only by
+    // RefreshServerStatusAsync (community watch) and cleared on every session
+    // profile switch, so live-map readers never observe another session's
+    // snapshot. See commit notes: the original GameMonitoring-era writer was
+    // decommissioned with the bundled-map independence pivot.
+    private IsleServerStatus? _lastServerStatus;
     private readonly List<ServerPopulationSample> _serverPopulationSamples = [];
     private string _serverStatusError = string.Empty;
     private CancellationTokenSource? _serverStatusCancellation;
@@ -1653,12 +1658,20 @@ public partial class MainWindow : Window
         var originalContent = CopyPositionButton.Content;
         try
         {
+            // Wave-8 residual: when the shared heading-confidence view reports a
+            // degraded or stale feed, the copied heading is the HELD last good
+            // value — say so in the clipboard text, same as the ribbon/tooltip.
+            var headingConfidence = CurrentHeadingConfidenceView();
+            var heldSuffix = headingConfidence.Tier
+                is HeadingConfidenceTier.Stale or HeadingConfidenceTier.Degraded
+                    ? " · HELD"
+                    : string.Empty;
             Clipboard.SetText(
                 $"Isley position: X {_currentSelfX:0.##}, Y {_currentSelfY:0.##}, " +
                 (string.IsNullOrWhiteSpace(_currentGridReference)
                     ? string.Empty
                     : $"grid {_currentGridReference}, ") +
-                $"heading {ToCardinal(_currentSelfBearing)} {_currentSelfBearing:000} degrees");
+                $"heading {ToCardinal(_currentSelfBearing)} {_currentSelfBearing:000} degrees{heldSuffix}");
             CopyPositionButton.Content = "Position copied";
         }
         catch
