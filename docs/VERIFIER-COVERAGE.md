@@ -2,7 +2,8 @@
 
 Date: 2026-07-28 (wave w1d, branch `swarm/w1d-testinfra`; refreshed wave w4,
 branch `swarm/w4-contracts`; refreshed wave w9b, branch
-`swarm/w9b-backend-verifiers`)
+`swarm/w9b-backend-verifiers`; refreshed wave w10b, branch
+`swarm/w10b-publisher-verifiers`)
 Method: every `BurntHud/*Logic.cs` file and each service's core classes were
 mapped to `Verification/*` coverage by (a) `Compile Include` entries in
 verifier `.csproj` files (behavioral coverage — the logic is compiled and
@@ -16,14 +17,14 @@ executed).
 - **84/84 (100%)** have behavioral verifier coverage: every logic file is
   compiled into at least one verifier project. Wave w4 closed the last 10
   uncovered Wave-2 files (see "Verifiers added in wave w4").
-- **75** verifier projects exist under `Verification/` (61 before wave w4
-  + 10 new in w4 + 4 new in w9b).
+- **77** verifier projects exist under `Verification/` (61 before wave w4
+  + 10 new in w4 + 4 new in w9b + 2 new in w10b).
 - Service assemblies (`Isley.Relay`, `Isley.ServerBridge`, `Isley.Telemetry`)
-  are exercised by `TelemetryPlatformVerifier` plus the four wave-w9b backend
-  verifiers below. The w9b verifiers compile the service sources directly
-  into each verifier assembly (the standard verifier pattern) because
-  `InternalsVisibleTo` names only `TelemetryPlatformVerifier` and product
-  code was out of scope.
+  are exercised by `TelemetryPlatformVerifier` plus the six wave-w9b/w10b
+  backend verifiers below. Those verifiers compile the service sources
+  directly into each verifier assembly (the standard verifier pattern)
+  because `InternalsVisibleTo` names only `TelemetryPlatformVerifier` and
+  product code was out of scope.
 
 ## Risk-ranked gaps
 
@@ -37,7 +38,7 @@ executed).
 | `FocusModeSuggestLogic.cs` | UX / map | Category→focus mapping and "never changes anything automatically" advisory contract | `FocusModeSuggestVerifier` |
 | `PressureCoachLogic.cs` | consent / privacy | Consent-roster coach distinguishes "not a broken connection" from real failures; once-only gating | `PressureCoachVerifier` |
 
-### P2 — service-class gaps closed in wave w9b
+### P2 — service-class gaps closed in waves w9b and w10b
 
 **`Isley.Relay` (auth/network):**
 
@@ -73,17 +74,30 @@ executed).
   disabled/unconfigured guard rails, live RCON → parse → validate → frame
   pipeline, reconnect backoff doubling with recovery).
 - `BridgeRuntime` (`BridgeFrameQueue`, `FrameFactory`, `BridgeRuntimeStatus`) —
-  partially closed: queue dequeue, status snapshots, and source liveness are
-  exercised by `EvrimaRconProtocolVerifier`; `FrameFactory` privacy clamping
-  stays covered by `TelemetryPlatformVerifier`.
-- **Still uncovered:** `RelayPublisher` / `RelayPublishWorker` (HMAC frame
-  signing known-answer, conflict/`sequence_not_newer` handling, newest-frame
-  retry coalescing, `LastSuccessfulPublishAt` updates) and `BridgeJson` —
-  deferred; wave time-boxed. Both are instantiable (`HttpClient` handler
-  injection mirrors `SteamDeviceAuthVerifier`), so no product change is needed
-  to close them in a future wave. `BridgeOptions.PluginCapable` derivation
-  also remains.
-- Covered today: `BridgeOptions` (via `TelemetryPlatformVerifier`).
+  closed: queue dequeue, status snapshots, and source liveness are exercised
+  by `EvrimaRconProtocolVerifier`; snapshot shape, transitions, and the
+  readiness health check are deep-covered by `BridgeRuntimeVerifier` (w10b);
+  `FrameFactory` privacy clamping stays covered by
+  `TelemetryPlatformVerifier`.
+- `RelayPublisher` / `RelayPublishWorker` — closed by `RelayPublishVerifier`
+  (w10b): HMAC frame signing as a pinned known-answer vector plus live
+  publisher-to-relay signature interop through the real
+  `BridgeSignatureVerifier`, the 409 `sequence_not_newer`/conflict outcome
+  matrix, retry coalescing that drops stale frames and keeps the newest, and
+  `LastSuccessfulPublishAt` updating only on real success.
+- `BridgeJson` — closed by `BridgeRuntimeVerifier` (w10b): serializer round
+  trips plus hostile-input guards (case sensitivity, wrong types, missing
+  fields, the MaxDepth-12 cap) and bounded `PluginRequestBodyReader` reads.
+- `BridgeOptions.PluginCapable` — closed by `BridgeRuntimeVerifier` (w10b):
+  the enabled × key-length-≥32 derivation matrix.
+- Covered today: `BridgeOptions` (via `TelemetryPlatformVerifier`, now also
+  deep-covered for `PluginCapable`/`RelayConfigured` by
+  `BridgeRuntimeVerifier`).
+
+**The P2 service-class gap list is now empty.** Every service class named in
+the original gap analysis has behavioral verifier coverage; the only
+remaining items are the contract-level (source-grepped) entries below, which
+are documented posture rather than service-class gaps.
 
 **Contract-level only (grepped, never executed):**
 
@@ -199,6 +213,54 @@ Also fixed the wave-5 analyzer handoff in `Verification/`: CA1826 ×4
 (`FieldGuideVerifier`, `MutationPlannerVerifier`: `.First()` → `[0]` on
 `IReadOnlyList<T>`) and CA1847 ×1 (`HeadingConfidenceVerifier`:
 `Contains(char)`). Build log confirms zero remaining CA1826/CA1847 sites.
+
+## Verifiers added in wave w10b
+
+Two new **backend** projects under `Verification/`, closing the last P2
+service-class gaps (same compile-the-service-sources pattern as w9b; no
+product changes were needed — everything was reachable through the existing
+`HttpClient` handler-injection and in-memory seams). Both registered in
+`Isley.sln` (project entries, Debug/Release configs, `Verification` folder
+nesting, sequential GUIDs); the full Release build passes with 0 errors and
+both verifier executables pass locally:
+
+1. `RelayPublishVerifier` (`Isley.ServerBridge`: `RelayPublisher`,
+   `RelayPublishWorker`, `BridgeFrameQueue`, `BridgeRuntimeStatus`;
+   `Isley.Relay`: `BridgeSignatureVerifier`, `BridgeReplayGuard`) — HMAC
+   frame signing proven two ways: (a) a pinned **known-answer vector**
+   (fixed server id `verify-bridge`, fixed 38-char secret, timestamp
+   `1700000000`, nonce `0123456789abcdef0123456789abcdef`, fixed JSON body →
+   body hash `32cf89c3…1d4241c`, signature
+   `08485eb19debcb642b86bda4430433cc3792090b0a4fbdef273be5c157906ab8`)
+   matching the relay's canonical-string contract, and (b) **live interop**:
+   a captured real publish is re-verified by the real relay
+   `BridgeSignatureVerifier` (accepted), its replay is rejected 409
+   `replayed_signature`, a tampered body is rejected 401
+   `invalid_signature`, and an unregistered bridge is `unknown_bridge`.
+   Also proves the request shape (POST to `{RelayUrl}/api/v1/ingest`,
+   `application/json`, fresh unique nonces, current timestamp), the 409
+   matrix (`sequence_not_newer` → `Superseded` without throwing; any other
+   conflict error → rejection naming the relay's error; unparseable 409 →
+   honest `conflict`), the oversized-frame refusal before any HTTP attempt,
+   the unconfigured-relay guard, worker retry coalescing (stale frames
+   dropped, newest retained — exactly one retry publish), backoff (no
+   flat-spin), and `LastSuccessfulPublishAt` updating **only** on real
+   success (untouched by failures, superseded frames, and rejections).
+2. `BridgeRuntimeVerifier` (`Isley.ServerBridge`: `BridgeOptions`,
+   `BridgeRuntimeStatus`, `BridgeReadinessHealthCheck`, `BridgeJson`,
+   `PluginRequestBodyReader`) — the `PluginCapable` derivation matrix
+   (enabled × key length ≥ 32, incl. the 31/32 boundary) and
+   `RelayConfigured` matrix; the status `Snapshot()` shape (all eight
+   fields always present, honest waiting defaults, ISO-8601
+   `lastSuccessfulPublishAt` that failures never rewrite); `BridgeJson`
+   round trips with hostile inputs (case-sensitivity enforced, wrong types
+   → bounded `JsonException` only, missing fields → documented defaults,
+   JSON `null` → null for the endpoint guard, unknown properties ignored,
+   MaxDepth-12 cap: depth 12 parses, 13 fails); `PluginRequestBodyReader`
+   bounds (declared-oversize refused without reading a byte, streamed
+   oversize bounded, exact-cap accepted); and the readiness health-check
+   matrix (Degraded until a configured bridge actually publishes, Healthy
+   after, Degraded when unconfigured).
 
 ## Mutation-testing the contract suite
 
