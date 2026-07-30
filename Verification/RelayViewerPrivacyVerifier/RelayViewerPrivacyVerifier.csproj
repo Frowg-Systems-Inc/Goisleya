@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>RelayViewerPrivacyVerifier</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\Isley.Telemetry\Isley.Telemetry.csproj" />
+    <Compile Include="..\..\Isley.Relay\TelemetryRelay.cs" Link="TelemetryRelay.cs" />
+    <Compile Include="..\..\Isley.Relay\RelayMetrics.cs" Link="RelayMetrics.cs" />
+    <Compile Include="..\..\Isley.Relay\SteamFriendResolver.cs" Link="SteamFriendResolver.cs" />
+    <Compile Include="..\..\Isley.Relay\PrivacyStore.cs" Link="PrivacyStore.cs" />
+    <Compile Include="..\..\Isley.Relay\RelayOptions.cs" Link="RelayOptions.cs" />
+    <Compile Include="..\..\Isley.Relay\IsleyJson.cs" Link="IsleyJson.cs" />
+  </ItemGroup>
+</Project>

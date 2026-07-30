@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>RelayBearerAuthVerifier</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\Isley.Telemetry\Isley.Telemetry.csproj" />
+    <Compile Include="..\..\Isley.Relay\ViewerAuthentication.cs" Link="ViewerAuthentication.cs" />
+    <Compile Include="..\..\Isley.Relay\IsleyJson.cs" Link="IsleyJson.cs" />
+  </ItemGroup>
+</Project>
