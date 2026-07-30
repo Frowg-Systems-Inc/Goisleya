@@ -13,13 +13,13 @@ Require(MutationPlannerLogic.Catalog.Select(entry => entry.Name).Distinct(String
 Require(MutationPlannerLogic.FindById("traumatic-thrombosis") is null,
     "Temporarily removed Traumatic Thrombosis must not remain selectable");
 Require(MutationPlannerLogic.Search("e", 6).Count == 0, "Short-query guard failed");
-Require(MutationPlannerLogic.Search("efficient digestion", 6).First().Id == "efficient-digestion",
+Require(MutationPlannerLogic.Search("efficient digestion", 6)[0].Id == "efficient-digestion",
     "Exact mutation search failed");
 Require(MutationPlannerLogic.Search("aquatic", 6).Any(entry => entry.Id == "hydrodynamic"),
     "Play-style tag search failed");
 Require(MutationPlannerLogic.Search("nesting", 6).Any(entry => entry.Id == "advanced-gestation"),
     "Nesting tag search failed");
-Require(MutationPlannerLogic.Search("jump 50", 6).First().Id == "reinforced-tendons",
+Require(MutationPlannerLogic.Search("jump 50", 6)[0].Id == "reinforced-tendons",
     "Unlock-task search failed");
 Require(MutationPlannerLogic.Search("water", 3).Count == 3, "Search limit failed");
 

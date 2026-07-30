@@ -32,13 +32,13 @@ Check(FieldGuideLogic.Search("defensive stance reflect", "herbivore", [], 6).Sin
     "current Kentrosaurus combat search");
 Check(FieldGuideLogic.Search("spearfish", "carnivore", [], 6).Single().Id == "pteranodon",
     "current Pteranodon combat search");
-Check(FieldGuideLogic.Search("crush fracture", "carnivore", [], 6).First().Id == "tyrannosaurus",
+Check(FieldGuideLogic.Search("crush fracture", "carnivore", [], 6)[0].Id == "tyrannosaurus",
     "Tyrannosaurus combat search");
 Check(CombatGuideLogic.MutationSearchQuery("tyrannosaurus") == "fracture", "fracture mutation bridge");
 Check(CombatGuideLogic.MutationSearchQuery("beipiaosaurus") == "aquatic", "aquatic mutation bridge");
 Check(CombatGuideLogic.MutationSearchQuery("invalid") == "combat", "fallback mutation bridge");
 Check(FieldGuideLogic.Search(string.Empty, "omnivore", [], 6).Count == 2, "diet filter");
-Check(FieldGuideLogic.Search(string.Empty, "all", ["troodon"], 2).First().Id == "troodon", "favorite rank");
+Check(FieldGuideLogic.Search(string.Empty, "all", ["troodon"], 2)[0].Id == "troodon", "favorite rank");
 Check(FieldGuideLogic.NormalizeFavorites(["troodon", "invalid", "troodon"]).SequenceEqual(["troodon"]),
     "favorite normalization");
 Check(FieldGuideLogic.DietSpeciesIndex("gallimimus") == DietCoachLogic.Species.Length, "diet index bridge");

@@ -31,7 +31,7 @@ var degraded = HeadingConfidenceLogic.Evaluate(true, 200, 5000, false);
 Check(degraded.Tier == HeadingConfidenceTier.Degraded
       && degraded.Dot == "◐"
       && degraded.Suffix.Contains("degraded", StringComparison.Ordinal)
-      && degraded.CompactSuffix.Contains("◐", StringComparison.Ordinal)
+      && degraded.CompactSuffix.Contains('◐')
       && !degraded.Held,
     "degraded heading must carry the half dot and honest copy");
 
