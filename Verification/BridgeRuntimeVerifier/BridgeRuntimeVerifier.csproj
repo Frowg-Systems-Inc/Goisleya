@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>BridgeRuntimeVerifier</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\Isley.Telemetry\Isley.Telemetry.csproj" />
+    <Compile Include="..\..\Isley.ServerBridge\BridgeRuntime.cs" Link="BridgeRuntime.cs" />
+    <Compile Include="..\..\Isley.ServerBridge\BridgeOptions.cs" Link="BridgeOptions.cs" />
+    <Compile Include="..\..\Isley.ServerBridge\BridgeJson.cs" Link="BridgeJson.cs" />
+  </ItemGroup>
+</Project>
