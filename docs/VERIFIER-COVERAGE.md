@@ -1,7 +1,8 @@
 # Verifier Coverage Gap Analysis
 
 Date: 2026-07-28 (wave w1d, branch `swarm/w1d-testinfra`; refreshed wave w4,
-branch `swarm/w4-contracts`)
+branch `swarm/w4-contracts`; refreshed wave w9b, branch
+`swarm/w9b-backend-verifiers`)
 Method: every `BurntHud/*Logic.cs` file and each service's core classes were
 mapped to `Verification/*` coverage by (a) `Compile Include` entries in
 verifier `.csproj` files (behavioral coverage — the logic is compiled and
@@ -15,11 +16,14 @@ executed).
 - **84/84 (100%)** have behavioral verifier coverage: every logic file is
   compiled into at least one verifier project. Wave w4 closed the last 10
   uncovered Wave-2 files (see "Verifiers added in wave w4").
-- **71** verifier projects exist under `Verification/` (61 before wave w4
-  + 10 new).
+- **75** verifier projects exist under `Verification/` (61 before wave w4
+  + 10 new in w4 + 4 new in w9b).
 - Service assemblies (`Isley.Relay`, `Isley.ServerBridge`, `Isley.Telemetry`)
-  are partially exercised by `TelemetryPlatformVerifier`; several high-risk
-  auth/network classes remain uncovered (below).
+  are exercised by `TelemetryPlatformVerifier` plus the four wave-w9b backend
+  verifiers below. The w9b verifiers compile the service sources directly
+  into each verifier assembly (the standard verifier pattern) because
+  `InternalsVisibleTo` names only `TelemetryPlatformVerifier` and product
+  code was out of scope.
 
 ## Risk-ranked gaps
 
@@ -33,26 +37,52 @@ executed).
 | `FocusModeSuggestLogic.cs` | UX / map | Category→focus mapping and "never changes anything automatically" advisory contract | `FocusModeSuggestVerifier` |
 | `PressureCoachLogic.cs` | consent / privacy | Consent-roster coach distinguishes "not a broken connection" from real failures; once-only gating | `PressureCoachVerifier` |
 
-### P2 — still uncovered (candidates for the next wave)
+### P2 — service-class gaps closed in wave w9b
 
 **`Isley.Relay` (auth/network):**
 
 - `TelemetryBroker` / `TelemetryRelay` fanout — viewer pseudonymization
-  (`Pseudonym(...)`), per-viewer frame scoping. **Highest-risk remaining
-  gap**: a regression leaks one viewer's identity to another.
+  (`Pseudonym(...)`), per-viewer frame scoping. **Was the highest-risk
+  remaining gap.** Closed by `RelayViewerPrivacyVerifier` (behavioral — the
+  real broker runs against an in-memory fake `WebSocket`, no processes).
 - `DeviceAuthorizationStore` + `SteamOpenIdClient` (`SteamAuthentication.cs`) —
-  Steam device-code flow, user-code alphabet/normalization.
-- `IsleyBearerHandler` (`ViewerAuthentication.cs`) — bearer token gate.
-- `RelayReadinessHealthCheck`, `IsleyJson`.
+  closed by `SteamDeviceAuthVerifier` (behavioral; Steam HTTP edge mocked via
+  handler injection). One documented limit: the store's hardcoded 10-minute
+  pending-device TTL cannot be exercised without a clock seam (product change),
+  so expiry is proven on `AccessTokenService` instead (expired/future/skew
+  matrix); the store's one-time exchange replay guard is fully proven.
+- `IsleyBearerHandler` (`ViewerAuthentication.cs`) — closed by
+  `RelayBearerAuthVerifier` (behavioral: the real handler runs
+  `AuthenticateAsync` against crafted headers and tampered/crafted tokens).
+- `RelayReadinessHealthCheck` — closed by `RelayViewerPrivacyVerifier`.
+- `IsleyJson` — indirectly closed: it backs every serialization path in the
+  four new verifiers (tokens, snapshots, privacy state).
 - Covered today (via `TelemetryPlatformVerifier`): `BridgeSignatureVerifier`,
-  `BridgeReplayGuard`, `AccessTokenService`, `TelemetryFrameStore`,
-  `PrivacyStore`, `SteamFriendResolver`, `RelayOptions`.
+  `BridgeReplayGuard`, `AccessTokenService` (now also deep-covered by
+  `SteamDeviceAuthVerifier`), `TelemetryFrameStore`, `PrivacyStore`,
+  `SteamFriendResolver`, `RelayOptions`.
 
 **`Isley.ServerBridge` (network):**
 
-- `EvrimaRconClient` — RCON wire protocol plus private/loopback address
-  guarding (`IsPrivateOrLoopback`).
-- `RconPollingWorker`, `RelayPublisher`, `BridgeRuntime`, `BridgeJson`.
+- `EvrimaRconClient` — closed by `EvrimaRconProtocolVerifier` (behavioral: a
+  loopback fake-RCON TCP server captures the exact auth/command wire codec,
+  drives auth rejection, EOF silence, oversized and NUL-padded responses, and
+  proves transparent reconnect; the `IsPrivateOrLoopback` guard matrix is
+  exercised across RFC1918/link-local/public edge addresses).
+- `RconPollingWorker` — closed by `EvrimaRconProtocolVerifier` (behavioral:
+  disabled/unconfigured guard rails, live RCON → parse → validate → frame
+  pipeline, reconnect backoff doubling with recovery).
+- `BridgeRuntime` (`BridgeFrameQueue`, `FrameFactory`, `BridgeRuntimeStatus`) —
+  partially closed: queue dequeue, status snapshots, and source liveness are
+  exercised by `EvrimaRconProtocolVerifier`; `FrameFactory` privacy clamping
+  stays covered by `TelemetryPlatformVerifier`.
+- **Still uncovered:** `RelayPublisher` / `RelayPublishWorker` (HMAC frame
+  signing known-answer, conflict/`sequence_not_newer` handling, newest-frame
+  retry coalescing, `LastSuccessfulPublishAt` updates) and `BridgeJson` —
+  deferred; wave time-boxed. Both are instantiable (`HttpClient` handler
+  injection mirrors `SteamDeviceAuthVerifier`), so no product change is needed
+  to close them in a future wave. `BridgeOptions.PluginCapable` derivation
+  also remains.
 - Covered today: `BridgeOptions` (via `TelemetryPlatformVerifier`).
 
 **Contract-level only (grepped, never executed):**
@@ -116,6 +146,59 @@ All registered in `Isley.sln` (project entries, Debug/Release configs, and
    suggestion gates, honest offer copy.
 10. `DiagnosticsBundleVerifier` — newest-first selection, per-file and
     total byte caps, entry-name sanitization, schema stability.
+
+## Verifiers added in wave w9b
+
+Four new **backend** projects under `Verification/`, closing the P2
+service-class gaps. Because product code was out of scope this wave (and
+`InternalsVisibleTo` names only `TelemetryPlatformVerifier`), each verifier
+compiles the service sources directly into its own assembly — behavioral
+coverage, not source greps. All registered in `Isley.sln` (project entries,
+Debug/Release configs, `Verification` folder nesting, sequential GUIDs); the
+full Release build passes with 0 errors and every verifier executable passes
+locally:
+
+1. `RelayViewerPrivacyVerifier` (`Isley.Relay`: `TelemetryBroker`,
+   `TelemetryFrameStore`, `RelayMetrics`, `RelayReadinessHealthCheck`) — the
+   real broker runs against an in-memory fake `WebSocket`. Proves per-viewer
+   SHA-256 pseudonyms (known-answer derivation, re-derived per viewer), no raw
+   Steam/entity IDs in payloads, self-only vitals/species/conditions, stranger
+   filtering, friend labels, honest AI labels, same-server fanout, bounded
+   one-frame queue coalescing (a stale sequence is provably skipped),
+   hello/v2 negotiation (keyframe anchor then delta), control-frame bounds
+   (malformed ignored, fragmented closed `MessageTooBig`, bad server id
+   `PolicyViolation`), aggregate-only metrics, rate-limit rejection counting
+   plus the 429/no-queue limiter wiring grep, and readiness health matrix.
+2. `SteamDeviceAuthVerifier` (`DeviceAuthorizationStore`,
+   `SteamOpenIdClient`, `AccessTokenService`) — device-code minting (64-hex
+   device code, unambiguous `XXXX-XXXX` user code excluding 0/O/1/I), the
+   pending→approved→consumed state machine, single-use exchange replay guard,
+   user-code normalization, token expiry/skew/tamper/wrong-purpose guards via
+   a same-key-ring crafted protector, OpenID login-URI pinning, and callback
+   validation with the Steam HTTP edge mocked by handler injection (foreign
+   endpoint/return-to/claimed-id rejected without any HTTP call).
+3. `RelayBearerAuthVerifier` (`IsleyBearerHandler`) — the real
+   `AuthenticationHandler` runs `AuthenticateAsync`: accept matrix (claims,
+   case-insensitive scheme, trimming), `NoResult` for non-bearer attempts,
+   reject matrix (empty, garbage, tampered, expired, future-issued,
+   malformed-id, foreign-purpose), plus contract greps pinning AEAD
+   unprotect (no string token compares) and `FixedTimeEquals` at the bridge
+   signature edge.
+4. `EvrimaRconProtocolVerifier` (`EvrimaRconClient`, `RconPollingWorker`,
+   `BridgeFrameQueue`, `BridgeRuntimeStatus`) — a loopback fake-RCON TCP
+   server captures the exact auth (`0x01`+password+`0x00`) and command
+   (`0x02 0x77 0x00`) wire bytes; proves response round trip, transparent
+   reconnect with identical re-authentication, password rejection,
+   EOF-silence `IOException`, 1 MiB response cap, NUL trimming, the
+   private/loopback address guard matrix (incl. 172.15/172.32 and other
+   range-edge lookalikes), worker guard rails, the live RCON → parse →
+   validate → frame pipeline with honest capabilities, and reconnect backoff
+   (200→400→800 ms doubling, provably not flat-spin) with recovery.
+
+Also fixed the wave-5 analyzer handoff in `Verification/`: CA1826 ×4
+(`FieldGuideVerifier`, `MutationPlannerVerifier`: `.First()` → `[0]` on
+`IReadOnlyList<T>`) and CA1847 ×1 (`HeadingConfidenceVerifier`:
+`Contains(char)`). Build log confirms zero remaining CA1826/CA1847 sites.
 
 ## Mutation-testing the contract suite
 
