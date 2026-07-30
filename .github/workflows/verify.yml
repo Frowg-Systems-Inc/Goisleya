@@ -73,6 +73,42 @@ jobs:
         shell: pwsh
         run: .\scripts\verify-all.ps1
 
+  # Python contract suites (tests/): ledger counts, release signing, private
+  # server, p1 marker/pin/vitals/encounters, updater delta, and the
+  # VoiceServer live signaling test (needs the .NET SDK and Node on PATH).
+  pytest:
+    name: Python contract suites (tests/)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      ISLEY_REPO_ROOT: ${{ github.workspace }}
+    steps:
+      - name: Check out Isley
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest dependencies
+        run: python -m pip install pytest pyyaml
+
+      - name: Run pytest contract suites
+        run: python -m pytest tests/ -q
+
   download-site:
     name: Build, lint, and test the download site
     runs-on: ubuntu-latest
