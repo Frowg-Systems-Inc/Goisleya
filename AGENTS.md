@@ -40,6 +40,24 @@ node scripts/mutation-check-contracts.cjs
 yarn lint:overlay    # ESLint --max-warnings 0 on the 3 shipped JS files
 ```
 
+### Running the full suite locally
+
+`scripts/verify-all.ps1` is the complete local referee: restore, Release
+build, package audits, node contracts, the pytest suites, every
+`Verification/*` console verifier, and the download-site lint/build/test.
+The pytest suites resolve the repo root from `ISLEY_REPO_ROOT` when set,
+otherwise from their own location (`tests/..`), so they run from any
+checkout; they need `pytest` + `pyyaml` (`pip install pytest pyyaml`), node
+on PATH, and the .NET SDK on PATH for the VoiceServer live test. A repo-local
+`.venv-tools` venv is picked up automatically by `verify-all.ps1`; without
+python/pytest that leg skips with a warning.
+
+```powershell
+.\scripts\verify-all.ps1                 # everything
+python -m pytest tests/ -q               # just the pytest contract suites
+dotnet run --project Verification\<Name> -c Release  # one focused verifier
+```
+
 ## THE CONTRACT LEDGER (law)
 
 The Quick Commands catalog lives in `CommandPaletteActions`

@@ -15,6 +15,23 @@ plus its relay, server bridge, voice, telemetry, and updater services.
   This builds all projects, runs every `Verification/*` console verifier, the
   node contract scripts, ESLint, and the pytest suite.
 
+### Running the full suite locally
+
+`verify-all.ps1` runs, in order: NuGet restore, the Release solution build
+(use `-m:1` if you build by hand — parallel MSBuild nodes break in some
+environments), package vulnerability audits, the node contract scripts
+(`verify-*.cjs` + `mutation-check-contracts.cjs`), the pytest contract suites
+in `tests/`, every `Verification/*` console verifier exe, and the
+download-site lint/build/test/audit.
+
+For the pytest leg you need Python with `pip install pytest pyyaml`; the
+script prefers a repo-local `.venv-tools` venv, falls back to `python` on
+PATH, and skips with a warning if neither provides pytest. The suites root
+themselves via `ISLEY_REPO_ROOT` (set by the script) or their own location,
+so a plain `python -m pytest tests/ -q` also works from any checkout. Keep
+node and the .NET SDK on PATH — several suites shell out to `node`, and the
+VoiceServer suite builds and boots the real server.
+
 ## The contract ledger (important)
 
 Several features are protected by cross-checked "contracts". If you change
