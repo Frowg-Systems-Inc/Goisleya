@@ -406,12 +406,13 @@ if ($null -ne $resolvedPrevious) {
             Copy-Item -LiteralPath (Join-Path $clientStage $relative) `
                 -Destination $destination -Force
         }
-        # Unary comma keeps a single-entry delete list a JSON array.
+        # Array subscript keeps any entry count (including zero) a flat JSON
+        # array; the unary-comma form nests an empty list as [ [] ].
         $deltaManifest = [ordered]@{
             format = 1
             fromVersion = $deltaFromVersion
             toVersion = $version
-            deletedFiles = , $deletedNormalized
+            deletedFiles = @($deletedNormalized)
         } | ConvertTo-Json
         $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
         [System.IO.File]::WriteAllText(
