@@ -20,7 +20,7 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);.codex-build\**;**\.codex-build\**</DefaultItemExcludes>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\Brand\isley-triceratops-app-teeth-clean.png" />
